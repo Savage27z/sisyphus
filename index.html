@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sisyphus</title>
+    <meta name="description" content="Sisyphus — an anime party race up a 10-floor tower. Climb, shove, fall, climb again. Whoever holds the flag rules the tower." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@500;700;900&family=Titan+One&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+
+    <div id="hud" class="hidden">
+      <div id="crosshair"></div>
+      <div id="floorBox" class="txt">
+        <div class="label">FLOOR</div>
+        <div id="floorNum">0</div>
+        <div id="floorName">Lobby</div>
+        <div id="heightM">0.0 m</div>
+      </div>
+      <div id="topbar" class="txt">
+        <div id="timer">8:00</div>
+        <div id="prizeBadge" class="hidden"></div>
+        <div id="flagStatus"></div>
+      </div>
+      <div id="holdBar" class="hidden"><div id="holdFill"></div></div>
+      <div id="race"><div class="raceTop">FLAG</div><div id="raceTrack"></div></div>
+      <div id="feed" class="txt"></div>
+      <div id="popup" class="txt"></div>
+      <div id="mapTitle" class="txt"></div>
+      <div id="markers" class="txt"></div>
+      <div id="bottom" class="txt">
+        <div id="weapon">Shove</div>
+        <div id="hpBar"><div id="hpFill"></div></div>
+        <div id="trapSlots"></div>
+      </div>
+    </div>
+
+    <!-- Home page -->
+    <div id="menu" class="home">
+      <div class="homeShade"></div>
+      <div class="homeInner">
+        <div class="brand">
+          <div class="logo">
+            <svg class="emblem" viewBox="0 0 160 130" aria-hidden="true">
+              <!-- flag planted in the boulder -->
+              <rect x="86" y="6" width="6" height="58" rx="2" fill="#f4f1ea" stroke="#2c2633" stroke-width="4" />
+              <path d="M92 9 L134 20 L92 33 Z" fill="#ff4d5e" stroke="#2c2633" stroke-width="4" stroke-linejoin="round" />
+              <path d="M92 9 L134 20 L120 22 L92 17 Z" fill="#ff8a96" />
+              <!-- the boulder -->
+              <path d="M30 70 C34 44 64 34 92 40 C122 46 142 62 138 88 C134 112 104 124 76 122 C46 120 24 100 30 70 Z" fill="#9aa0ad" stroke="#2c2633" stroke-width="6" stroke-linejoin="round" />
+              <path d="M44 98 C64 114 102 116 124 98 C130 92 134 84 135 78 C138 100 116 120 82 120 C56 120 38 108 34 92 Z" fill="#6f7584" />
+              <path d="M46 62 C54 50 70 46 82 48" fill="none" stroke="#d6d9e0" stroke-width="7" stroke-linecap="round" />
+              <path d="M66 82 L78 76 M98 92 L108 86 L112 94" fill="none" stroke="#4f5462" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <h1 class="logoText" aria-label="Sisyphus"><span class="extrude" aria-hidden="true">SISYPHUS</span><span class="face" aria-hidden="true">SISYPHUS</span></h1>
+          </div>
+          <p class="tagline">Whoever holds the flag takes the prize.</p>
+          <p class="subtag">24 climbers. 4 maps. One flag. Blast everyone off, fall, climb again.</p>
+        </div>
+
+        <div class="playCard">
+          <div class="playingAs">Playing as <b id="homeName">You</b> <a id="notYou" href="#">not you?</a></div>
+          <div class="headline prizeLine"><span id="homePrize">$25</span> PRIZE POOL</div>
+          <button id="playOnlineBtn" class="bigPlay">PLAY ONLINE</button>
+          <div class="homeStats">
+            <div id="homeOnline">Checking who's online…</div>
+            <div id="homeRound"></div>
+          </div>
+          <div class="homeGrid">
+            <button id="howtoBtn" class="gridBtn">HOW TO PLAY</button>
+            <button id="leaderBtn" class="gridBtn">LEADERBOARD</button>
+            <button id="winsBtn" class="gridBtn">MY WINS</button>
+            <button id="lockerBtn" class="gridBtn">LOCKER</button>
+            <button id="recordsBtn" class="gridBtn">RECORDS</button>
+            <button id="settingsBtn" class="gridBtn">SETTINGS</button>
+          </div>
+          <div class="homeLinks">
+            <a id="friendsLink" href="#">Play with friends →</a>
+            <a id="practiceLink" href="#">Practice offline →</a>
+          </div>
+          <div class="homeFoot">
+            <a id="creditsLink" href="#">Credits</a>
+            <span class="ver">v0.5 · 4 maps · 24-player rounds</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Home page sheets -->
+    <div id="howto" class="overlay sheetOverlay hidden">
+      <div class="panel sheet">
+        <button class="closeX" data-close="howto" aria-label="Close">✕</button>
+        <h2>HOW TO PLAY</h2>
+        <ol class="rules">
+          <li>Everyone starts at the bottom. <b>Climb all twelve levels</b> to the top: Mount Olympus, The Tower, the Construction Site or the Haunted Hotel.</li>
+          <li>Every level is packed with obstacles: pistons, wrecking balls, rockfalls, lasers, ghosts, crumbling floors and spinning bars. There's always more than one way up.</li>
+          <li>You start with a <b>Blaster</b>. Shots knock people back, and enough damage knocks them down a level or two. Nobody is ever eliminated.</li>
+          <li>The <b>orange weapon racks</b> on every level hold better guns (Shotgun, Rocket, Railgun, Freeze ray) and melee weapons. They refill. The two by the start always hold a Rocket or a Railgun, so it's a race.</li>
+          <li>Supply drops parachute in through the round: a weapon plus a trap.</li>
+          <li>Grab the flag at the top and <b>hold it for 3 seconds</b> to win. Whoever holds the flag is harder to knock away, but a real knockdown makes them drop it.</li>
+          <li><b>PLAY ONLINE</b> drops you into the next public round (up to 24 players, bots fill the gaps). Rounds with enough real players are <b>prize rounds</b>.</li>
+          <li><b>Play with friends</b>: make a room and send the code or invite link.</li>
+        </ol>
+        <div class="controls">
+          <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>Move</span>
+          <span><kbd>Shift</kbd></span><span>Sprint</span>
+          <span><kbd>Space</kbd></span><span>Jump (on a safety net: big bounce)</span>
+          <span><kbd>Mouse</kbd></span><span>Look</span>
+          <span><kbd>Left click</kbd><kbd>F</kbd></span><span>Shoot (hold for the Blaster)</span>
+          <span><kbd>Right click</kbd><kbd>E</kbd></span><span>Shove / melee</span>
+          <span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd></span><span>Grease · Spring · Trapdoor · Bear trap</span>
+          <span><kbd>Scroll</kbd></span><span>Camera zoom</span>
+          <span><kbd>R</kbd> / <kbd>M</kbd> / <kbd>Esc</kbd></span><span>Restart · Music · Pause</span>
+        </div>
+        <h3 class="controlsHead">CONTROLLER</h3>
+        <div class="controls">
+          <span><kbd>Left stick</kbd></span><span>Move (click it, or hold <kbd>LB</kbd>, to sprint)</span>
+          <span><kbd>Right stick</kbd></span><span>Look</span>
+          <span><kbd>A</kbd></span><span>Jump</span>
+          <span><kbd>RT</kbd></span><span>Shoot (hold for the Blaster)</span>
+          <span><kbd>RB</kbd> / <kbd>X</kbd></span><span>Shove / melee</span>
+          <span><kbd>D-pad</kbd></span><span>Traps: ↑ Grease · → Spring · ↓ Trapdoor · ← Bear trap</span>
+          <span><kbd>Y</kbd> / <kbd>Start</kbd></span><span>Camera distance · Pause</span>
+          <span><kbd>D-pad</kbd> <kbd>A</kbd> <kbd>B</kbd></span><span>Menus: move · select · back</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="records" class="overlay sheetOverlay hidden">
+      <div class="panel sheet">
+        <button class="closeX" data-close="records" aria-label="Close">✕</button>
+        <h2>RECORDS</h2>
+        <div id="recordsBody" class="recordsGrid"></div>
+        <p class="hint">Records are saved on this device.</p>
+      </div>
+    </div>
+
+    <div id="settings" class="overlay sheetOverlay hidden">
+      <div class="panel sheet">
+        <button class="closeX" data-close="settings" aria-label="Close">✕</button>
+        <h2>SETTINGS</h2>
+        <div class="settingsList">
+          <label class="setRow"><span>Music</span><input type="checkbox" id="setMusic" class="switch" /></label>
+          <label class="setRow"><span>Sound volume</span><input type="range" id="setVolume" min="0" max="100" /></label>
+          <label class="setRow"><span>Look sensitivity</span><input type="range" id="setSens" min="20" max="250" /></label>
+          <label class="setRow"><span>Invert look Y</span><input type="checkbox" id="setInvert" class="switch" /></label>
+        </div>
+      </div>
+    </div>
+
+    <div id="credits" class="overlay sheetOverlay hidden">
+      <div class="panel sheet">
+        <button class="closeX" data-close="credits" aria-label="Close">✕</button>
+        <h2>CREDITS</h2>
+        <ul class="creditList">
+          <li><b>Fighters</b> — VRoid sample avatars by VRoid Project / pixiv (CC0)</li>
+          <li><b>Base animations</b> — Mixamo clips via the three.js examples</li>
+          <li><b>Locker design</b> — inspired by INKWAVE by Jayden Davis (MIT)</li>
+          <li><b>Engine</b> — three.js (MIT), Rapier physics (Apache-2.0), three-vrm (MIT)</li>
+          <li><b>Fonts</b> — Titan One &amp; Rubik (SIL Open Font License)</li>
+        </ul>
+      </div>
+    </div>
+
+    <div id="arena" class="overlay sheetOverlay hidden">
+      <div class="panel sheet arenaSheet">
+        <button class="closeX" id="arenaClose" aria-label="Leave">✕</button>
+        <h2 id="arenaTitle">PLAY ONLINE</h2>
+        <div id="arenaPrize" class="arenaPrize"></div>
+        <div id="arenaMap" class="arenaMap"></div>
+        <label id="arenaNameRow" class="nameRow onlineName hidden">Your name <input id="arenaName" maxlength="14" autocomplete="off" spellcheck="false" placeholder="Pick a name" /></label>
+        <button id="arenaGo" class="bigPlay hidden">JOIN</button>
+        <div id="arenaClock" class="arenaClock"></div>
+        <div id="arenaCount" class="roomCount"></div>
+        <ul id="arenaPlayers" class="roomPlayers arenaPlayers"></ul>
+        <p id="arenaStatus" class="hint"></p>
+        <button id="arenaLeave" class="secondary">LEAVE</button>
+      </div>
+    </div>
+
+    <div id="practice" class="overlay sheetOverlay hidden">
+      <div class="panel sheet">
+        <button class="closeX" data-close="practice" aria-label="Close">✕</button>
+        <h2>PRACTICE</h2>
+        <p class="tag">Pick a map. Just you and the bots, no prize.</p>
+        <div id="practiceMaps" class="mapCards"></div>
+      </div>
+    </div>
+
+    <div id="leaderboard" class="overlay sheetOverlay hidden">
+      <div class="panel sheet">
+        <button class="closeX" data-close="leaderboard" aria-label="Close">✕</button>
+        <h2>LEADERBOARD</h2>
+        <ol id="leaderList" class="leaderList"></ol>
+        <p class="hint">Most wins in public rounds.</p>
+      </div>
+    </div>
+
+    <div id="mywins" class="overlay sheetOverlay hidden">
+      <div class="panel sheet">
+        <button class="closeX" data-close="mywins" aria-label="Close">✕</button>
+        <h2>MY WINS</h2>
+        <div id="mywinsBody" class="recordsGrid"></div>
+        <ul id="mywinsList" class="creditList"></ul>
+        <p class="hint">Your wins are tied to this browser.</p>
+      </div>
+    </div>
+
+    <div id="online" class="overlay sheetOverlay hidden">
+      <div class="panel sheet">
+        <button class="closeX" id="onlineClose" aria-label="Close">✕</button>
+        <h2>PLAY ONLINE</h2>
+        <div id="onlineStart">
+          <p class="tag">Make a room and send the code to your friends — or join theirs.</p>
+          <label class="nameRow onlineName">Your name <input id="onlineName" maxlength="14" autocomplete="off" spellcheck="false" placeholder="Pick a name" /></label>
+          <button id="createRoomBtn" class="bigPlay">CREATE ROOM</button>
+          <div class="joinRow">
+            <input id="joinCode" maxlength="5" placeholder="ROOM CODE" autocomplete="off" spellcheck="false" />
+            <button id="joinRoomBtn" class="gridBtn">JOIN</button>
+          </div>
+        </div>
+        <div id="onlineRoom" class="hidden">
+          <div class="roomHead">
+            <div>ROOM <b id="roomCode">-----</b></div>
+            <button id="copyInvite" class="gridBtn">COPY INVITE LINK</button>
+          </div>
+          <div id="roomCount" class="roomCount"></div>
+          <ul id="roomPlayers" class="roomPlayers"></ul>
+          <div class="roomMapHead">MAP</div>
+          <div id="roomMaps" class="mapCards compact"></div>
+          <label class="setRow"><span>Fill empty slots with bots</span><input type="checkbox" id="roomBots" class="switch" /></label>
+          <button id="roomStart" class="bigPlay">START</button>
+          <p id="roomWait" class="hint">Waiting for the host to start…</p>
+          <button id="roomLeave" class="secondary">LEAVE ROOM</button>
+        </div>
+        <p id="onlineStatus" class="hint"></p>
+      </div>
+    </div>
+
+    <div id="locker" class="hidden">
+      <div class="lockerPanel">
+        <h2>LOCKER</h2>
+        <label class="nameRow">Name <input id="lockerName" maxlength="14" autocomplete="off" /></label>
+        <div id="lockerOptions"></div>
+        <div class="lockerActions">
+          <button id="lockerRandom" class="secondary">RANDOMIZE</button>
+          <button id="lockerDone">DONE</button>
+        </div>
+        <div id="lockerStatus"></div>
+      </div>
+    </div>
+
+    <div id="pause" class="overlay hidden">
+      <div class="panel">
+        <h2>PAUSED</h2>
+        <button id="resumeBtn">RESUME</button>
+        <button id="restartBtn">RESTART</button>
+        <button id="pauseMenuBtn" class="secondary">MENU</button>
+      </div>
+    </div>
+
+    <div id="end" class="overlay hidden">
+      <div class="panel">
+        <h1 id="endTitle"></h1>
+        <p id="endSub" class="tag"></p>
+        <div id="endStats"></div>
+        <button id="againBtn">PLAY AGAIN</button>
+        <button id="endMenuBtn" class="secondary">MENU</button>
+        <p id="endHint" class="hint">or press <kbd>R</kbd></p>
+      </div>
+    </div>
+
+    <div id="loading" class="overlay">
+      <div class="loadingPanel">
+        <div class="logo loadingLogo">
+            <svg class="emblem" viewBox="0 0 160 130" aria-hidden="true">
+              <!-- flag planted in the boulder -->
+              <rect x="86" y="6" width="6" height="58" rx="2" fill="#f4f1ea" stroke="#2c2633" stroke-width="4" />
+              <path d="M92 9 L134 20 L92 33 Z" fill="#ff4d5e" stroke="#2c2633" stroke-width="4" stroke-linejoin="round" />
+              <path d="M92 9 L134 20 L120 22 L92 17 Z" fill="#ff8a96" />
+              <!-- the boulder -->
+              <path d="M30 70 C34 44 64 34 92 40 C122 46 142 62 138 88 C134 112 104 124 76 122 C46 120 24 100 30 70 Z" fill="#9aa0ad" stroke="#2c2633" stroke-width="6" stroke-linejoin="round" />
+              <path d="M44 98 C64 114 102 116 124 98 C130 92 134 84 135 78 C138 100 116 120 82 120 C56 120 38 108 34 92 Z" fill="#6f7584" />
+              <path d="M46 62 C54 50 70 46 82 48" fill="none" stroke="#d6d9e0" stroke-width="7" stroke-linecap="round" />
+              <path d="M66 82 L78 76 M98 92 L108 86 L112 94" fill="none" stroke="#4f5462" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <h1 class="logoText" aria-label="Sisyphus loading"><span class="extrude" aria-hidden="true">SISYPHUS</span><span class="face" aria-hidden="true">SISYPHUS</span></h1>
+          </div>
+        <div class="loadBar"><div id="loadFill"></div></div>
+        <p id="loadingText" class="loadError"></p>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

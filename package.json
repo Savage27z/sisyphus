@@ -1,0 +1,26 @@
+{
+  "name": "sisyphus",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "optimize:vrm": "node scripts/optimize-vrm.mjs assets-src/anime public/assets/models/anime",
+    "server": "node server/index.mjs",
+    "start": "npm run build && node server/index.mjs"
+  },
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "^0.21.0",
+    "@pixiv/three-vrm": "^3.5.5",
+    "three": "^0.186.1",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.186.0",
+    "sharp": "^0.35.5",
+    "typescript": "~5.9.3",
+    "vite": "^8.3.3"
+  }
+}

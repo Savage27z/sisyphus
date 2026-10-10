@@ -1,0 +1,9 @@
+node_modules
+dist
+# Server stats (round results, leaderboard)
+data
+data-test
+# Original, unoptimised character files (the game loads the optimised copies in public/)
+assets-src
+# Local editor/tool settings
+.claude
