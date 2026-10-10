@@ -4,7 +4,7 @@ import './style.css';
 import { createRig, loadAssets } from './assets';
 import { CONFIG } from './config';
 import { Game } from './game';
-import { loadProfile, randomStyle } from './style';
+import { BASES, MALE_BASES, loadProfile, randomStyle } from './style';
 
 async function boot(): Promise<void> {
   // Just a bar: the downloads fill the first 80%, setting up the rest.
@@ -19,14 +19,21 @@ async function boot(): Promise<void> {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
   renderer.setSize(window.innerWidth, window.innerHeight);
 
-  const [assets] = await Promise.all([loadAssets((f) => progress(f * 0.8)), RAPIER.init()]);
   const profile = loadProfile();
+  // The first screen only needs three base characters: yours, one of the boys and one of the
+  // girls for the bots. The other four download in the background once the menu is up.
+  const mine = profile.style.base;
+  const boy = MALE_BASES.includes(mine) ? MALE_BASES.find((b) => b !== mine)! : MALE_BASES[Math.floor(Math.random() * MALE_BASES.length)];
+  const girls = BASES.map((_, i) => i).filter((i) => !MALE_BASES.includes(i) && i !== mine);
+  const girl = girls[Math.floor(Math.random() * girls.length)];
+  const bootBases = [mine, boy, girl];
+  const [assets] = await Promise.all([loadAssets(bootBases, (f) => progress(f * 0.8)), RAPIER.init()]);
   progress(0.85);
   const styles = [profile.style];
+  const order = [boy, girl, mine, girl, boy];
   for (let i = 0; i < CONFIG.BOT_COUNT; i++) {
     const s = randomStyle();
-    // Keep the lobby mixed: a couple of the bots are always the male fighters.
-    if (i === 0 || i === 2) s.base = 5 + (i / 2);
+    s.base = order[i % order.length];
     styles.push(s);
   }
   // Different base fighters parse in parallel (image decoding happens off the main thread).
@@ -42,6 +49,8 @@ async function boot(): Promise<void> {
   progress(1);
   document.getElementById('loading')!.classList.add('hidden');
   game.start();
+  // The other characters, quietly, after the menu has had a moment to settle.
+  setTimeout(() => assets.prefetchAll(), 2500);
   // Handy for tuning from the browser console.
   if (import.meta.env.DEV) (window as unknown as { game: Game }).game = game;
 }

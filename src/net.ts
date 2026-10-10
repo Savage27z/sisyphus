@@ -1,4 +1,5 @@
 import type { Style } from './style';
+import { socketUrl } from './endpoint';
 import type { MapId } from './arena';
 
 export interface RoomPlayer {
@@ -102,7 +103,7 @@ export class Net {
 
   connect(): Promise<void> {
     if (this.connected) return Promise.resolve();
-    const url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
+    const url = socketUrl();
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(url);
       this.ws = ws;

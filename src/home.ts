@@ -1,4 +1,5 @@
 import { CONFIG } from './config';
+import { apiUrl } from './endpoint';
 import type { Game } from './game';
 import { renderMapCards } from './maps';
 
@@ -88,6 +89,8 @@ export class Home {
     const volume = $('setVolume') as HTMLInputElement;
     const sens = $('setSens') as HTMLInputElement;
     const invert = $('setInvert') as HTMLInputElement;
+    const lowGfx = $('setLowGfx') as HTMLInputElement;
+    lowGfx.addEventListener('change', () => game.updateSettings({ lowGraphics: lowGfx.checked }));
     music.addEventListener('change', () => game.updateSettings({ music: music.checked }));
     volume.addEventListener('input', () => game.updateSettings({ volume: Number(volume.value) / 100 }));
     sens.addEventListener('input', () => game.updateSettings({ sensitivity: Number(sens.value) / 100 }));
@@ -127,7 +130,7 @@ export class Home {
 
   private async fetchStats(): Promise<void> {
     try {
-      const res = await fetch('/api/stats', { cache: 'no-store' });
+      const res = await fetch(apiUrl('/api/stats'), { cache: 'no-store' });
       if (!res.ok) throw new Error(String(res.status));
       this.lastStats = (await res.json()) as PublicStats;
       this.statsAt = performance.now();
@@ -161,7 +164,7 @@ export class Home {
     const list = $('leaderList');
     list.innerHTML = '<li class="dim">Loading…</li>';
     try {
-      const res = await fetch('/api/leaderboard', { cache: 'no-store' });
+      const res = await fetch(apiUrl('/api/leaderboard'), { cache: 'no-store' });
       const { top } = (await res.json()) as { top: { name: string; wins: number; rounds: number }[] };
       list.innerHTML = top.length
         ? top.map((p, i) => `<li><span class="rank">${i + 1}</span><span class="pname">${esc(p.name)}</span><b>${p.wins}</b><span class="dim">win${p.wins === 1 ? '' : 's'}</span></li>`).join('')
@@ -209,6 +212,7 @@ export class Home {
     ($('setVolume') as HTMLInputElement).value = String(Math.round(s.volume * 100));
     ($('setSens') as HTMLInputElement).value = String(Math.round(s.sensitivity * 100));
     ($('setInvert') as HTMLInputElement).checked = s.invertY;
+    ($('setLowGfx') as HTMLInputElement).checked = s.lowGraphics;
   }
 
   private renderRecords(): void {

@@ -10,6 +10,8 @@ import { toon } from './toon';
 
 export const BASES = ['shino', 'shibu', 'bibi', 'vita', 'victoria', 'kenji', 'ryo'] as const;
 export const BASE_NAMES = ['Shino', 'Shibu', 'Bibi', 'Vita', 'Victoria', 'Kenji', 'Ryo'];
+/** The boys (the rest are girls). */
+export const MALE_BASES = [5, 6];
 
 export const HAIR_COLORS: (string | null)[] = [null, '#ff8fc0', '#7fc8ff', '#7be0b0', '#b79cff', '#ffd25c', '#e8ecf2', '#e2485a', '#27304f', '#ff9a4d'];
 export const HAIR_NAMES = ['Natural', 'Sakura', 'Sky', 'Mint', 'Lilac', 'Gold', 'Silver', 'Crimson', 'Midnight', 'Tangerine'];

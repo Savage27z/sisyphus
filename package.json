@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && node scripts/compress-models.mjs dist/assets/models",
     "preview": "vite preview",
     "optimize:vrm": "node scripts/optimize-vrm.mjs assets-src/anime public/assets/models/anime",
     "server": "node server/index.mjs",

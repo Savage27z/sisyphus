@@ -77,6 +77,12 @@ export class Input {
     return p;
   }
 
+  /** Touch-screen swipes turn the camera like mouse movement. */
+  addLook(dx: number, dy: number): void {
+    this.dx += dx;
+    this.dy += dy;
+  }
+
   consumeMouse(): { dx: number; dy: number; wheel: number } {
     const r = { dx: this.dx, dy: this.dy, wheel: this.wheel };
     this.dx = this.dy = this.wheel = 0;

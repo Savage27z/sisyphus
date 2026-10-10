@@ -19,6 +19,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { Guard, STRIKES_TO_FLAG } from './guard.mjs';
@@ -80,7 +81,39 @@ const TYPES = {
   '.wasm': 'application/wasm',
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
+  '.gz': 'application/gzip',
 };
+const COMPRESSIBLE = new Set(['.html', '.js', '.css', '.json', '.svg', '.wasm']);
+/** Compressed copies of text files, made once per version of the file. */
+const packed = new Map();
+
+/** Built files with a content hash in the name never change; the models change rarely. */
+function cacheFor(file, ext) {
+  if (ext === '.html') return 'no-cache';
+  if (/-[\w-]{8,}\.(js|css)$/.test(path.basename(file))) return 'public, max-age=31536000, immutable';
+  return 'public, max-age=604800, stale-while-revalidate=2592000';
+}
+
+function sendFile(req, res, file) {
+  const ext = path.extname(file);
+  const headers = { 'content-type': TYPES[ext] ?? 'application/octet-stream', 'cache-control': cacheFor(file, ext) };
+  const accept = String(req.headers['accept-encoding'] ?? '');
+  const br = /\bbr\b/.test(accept);
+  if (COMPRESSIBLE.has(ext) && (br || /\bgzip\b/.test(accept))) {
+    const mtime = fs.statSync(file).mtimeMs;
+    let p = packed.get(file);
+    if (!p || p.mtime !== mtime) {
+      const raw = fs.readFileSync(file);
+      p = { mtime, br: zlib.brotliCompressSync(raw, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 9 } }), gz: zlib.gzipSync(raw, { level: 9 }) };
+      packed.set(file, p);
+    }
+    res.writeHead(200, { ...headers, 'content-encoding': br ? 'br' : 'gzip', vary: 'accept-encoding' });
+    res.end(br ? p.br : p.gz);
+    return;
+  }
+  res.writeHead(200, headers);
+  fs.createReadStream(file).pipe(res);
+}
 
 function json(res, body) {
   res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-cache', 'access-control-allow-origin': '*' });
@@ -135,12 +168,7 @@ const server = http.createServer((req, res) => {
     res.end('Build the game first: npm run build');
     return;
   }
-  const ext = path.extname(file);
-  res.writeHead(200, {
-    'content-type': TYPES[ext] ?? 'application/octet-stream',
-    'cache-control': ext === '.html' ? 'no-cache' : 'public, max-age=86400',
-  });
-  fs.createReadStream(file).pipe(res);
+  sendFile(req, res, file);
 });
 
 // ------------------------------------------------------------------ rooms

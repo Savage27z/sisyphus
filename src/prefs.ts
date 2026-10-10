@@ -1,3 +1,4 @@
+import { isTouchDevice } from './touch';
 // Small persistent stores for player settings and lifetime records (this device only).
 
 export interface Settings {
@@ -7,6 +8,8 @@ export interface Settings {
   /** Multiplier on mouse look speed. */
   sensitivity: number;
   invertY: boolean;
+  /** No shadows, lower resolution, fewer detailed fighters (on by default on phones). */
+  lowGraphics: boolean;
 }
 
 export interface Records {
@@ -41,7 +44,7 @@ function save(key: string, value: unknown): void {
 }
 
 export function loadSettings(): Settings {
-  return load<Settings>(SETTINGS_KEY, { music: true, volume: 0.8, sensitivity: 1, invertY: false });
+  return load<Settings>(SETTINGS_KEY, { music: true, volume: 0.8, sensitivity: 1, invertY: false, lowGraphics: isTouchDevice });
 }
 
 export function saveSettings(s: Settings): void {

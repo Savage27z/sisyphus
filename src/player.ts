@@ -29,6 +29,23 @@ export class PlayerController {
     this.sprintLatch = false;
   }
 
+  // On-screen buttons (touch screens).
+  queueJump(): void {
+    this.jumpBuffer = CONFIG.JUMP_BUFFER;
+  }
+
+  queueFire(): void {
+    this.attackQueued = true;
+  }
+
+  queueMelee(): void {
+    this.meleeQueued = true;
+  }
+
+  queueTrap(kind: TrapKind): void {
+    this.trapQueued = kind;
+  }
+
   handleKeys(codes: string[]): void {
     for (const code of codes) {
       if (code === 'Space') this.jumpBuffer = CONFIG.JUMP_BUFFER;
@@ -67,7 +84,7 @@ export class PlayerController {
   }
 
   fixedUpdate(dt: number): void {
-    const { input, cam, player: c } = this.game;
+    const { input, cam, player: c, touch } = this.game;
     const pad = input.pad;
     const usePad = pad.connected && !this.game.padNav.capturing;
     const key = (...codes: string[]) => codes.some((k) => input.down(k));
@@ -78,20 +95,24 @@ export class PlayerController {
       f = -pad.ly;
       r = pad.lx;
     }
+    if (touch.enabled && (touch.moveX || touch.moveY)) {
+      f = -touch.moveY;
+      r = touch.moveX;
+    }
     const s = Math.sin(cam.yaw);
     const co = Math.cos(cam.yaw);
     c.input.moveX = s * f - co * r;
     c.input.moveZ = co * f + s * r;
-    c.input.sprint = key('ShiftLeft', 'ShiftRight') || (usePad && (pad.down(BTN.LB) || this.sprintLatch));
+    c.input.sprint = key('ShiftLeft', 'ShiftRight') || (usePad && (pad.down(BTN.LB) || this.sprintLatch)) || touch.sprint;
     c.yaw = cam.yaw;
     this.jumpBuffer = Math.max(0, this.jumpBuffer - dt);
     c.input.jump = this.jumpBuffer > 0;
 
     // Shoot: one shot per click (or F, or trigger pull); automatic guns keep firing while held.
-    const auto = WEAPONS[c.weapon].auto && (input.mouseHeld || key('KeyF') || (usePad && this.padFire));
+    const auto = WEAPONS[c.weapon].auto && (input.mouseHeld || key('KeyF') || (usePad && this.padFire) || touch.firing);
     if (input.mouseClicked || this.attackQueued || auto) {
       const aim = cam.aim();
-      if (pad.active) this.assist(aim);
+      if (pad.active || touch.active) this.assist(aim);
       const heavy = c.weapon === 'rocket' || c.weapon === 'railgun' || c.weapon === 'pushgun';
       if (this.game.combat.shoot(c, aim) && heavy) pad.rumble(0.35, 0.5, 90);
       input.mouseClicked = false;

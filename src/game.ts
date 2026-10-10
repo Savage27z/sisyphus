@@ -16,6 +16,7 @@ import { Director } from './director';
 import { Flag } from './flag';
 import { Fx } from './fx';
 import { PadNav } from './gamepad';
+import { TouchControls } from './touch';
 import { Home } from './home';
 import { Hud } from './hud';
 import { Input } from './input';
@@ -25,7 +26,7 @@ import { Net, type RosterEntry } from './net';
 import { PlayerController } from './player';
 import { loadRecords, loadSettings, saveRecords, saveSettings, type Records, type Settings } from './prefs';
 import type { AnimeRig } from './rig';
-import { applyStyle, BASES, mulberry32, randomStyle, saveProfile, type Profile, type Style } from './style';
+import { applyStyle, BASES, MALE_BASES, mulberry32, randomStyle, saveProfile, type Profile, type Style } from './style';
 import { Traps } from './traps';
 
 type GameState = 'menu' | 'locker' | 'lobby' | 'playing' | 'paused' | 'over';
@@ -41,7 +42,6 @@ const BOY_NAMES = ['Kaito', 'Ren', 'Haru', 'Sora', 'Riku', 'Daichi', 'Kumo'];
 const COLORS = [0x3ec1ff, 0xff6f91, 0xffc23d, 0x6fdc8c, 0xb08cff, 0xff8a3d, 0x4fe0c8, 0xf2f2f2, 0xd9a066, 0x8fa8ff, 0xd9ff5c];
 const RAY_DOWN = { x: 0, y: -1, z: 0 };
 /** Indices into style.ts BASES that are the male fighters. */
-const MALE_BASES = [5, 6];
 
 /** The server's word on how a public/friends round ended. */
 interface RoundResult {
@@ -82,6 +82,11 @@ export class Game {
   readonly world: RAPIER.World;
   readonly input: Input;
   readonly padNav: PadNav;
+  touch!: TouchControls;
+  /** Fighters drawn in full / as plain models (fewer with low graphics). */
+  private maxFull = MAX_FULL;
+  private maxLite = MAX_LITE;
+  private graphicsLow: boolean | null = null;
   readonly sfx = new Sfx();
   readonly fx: Fx;
   readonly hud: Hud;
@@ -98,7 +103,7 @@ export class Game {
   readonly charByCollider = new Map<number, Character>();
   readonly charByNet = new Map<string, Character>();
   readonly player: Character;
-  private readonly playerCtl: PlayerController;
+  readonly playerCtl: PlayerController;
   private readonly locker: Locker;
   private readonly director: Director;
   readonly home: Home;
@@ -179,6 +184,7 @@ export class Game {
     this.demoBot = new Bot(this.player, randomSkill(), this);
 
     this.playerCtl = new PlayerController(this);
+    this.touch = new TouchControls(this);
     this.locker = new Locker(this);
     this.director = new Director(this);
     this.settings = loadSettings();
@@ -457,6 +463,7 @@ export class Game {
 
   /** Home-page background: a live match of bots, filmed by the director camera. */
   private startDemo(): void {
+    this.touch?.release();
     if (!this.rosterIsLocal) this.buildRosterSync(this.offlineSpecs());
     this.mode = 'demo';
     this.state = 'menu';
@@ -484,6 +491,27 @@ export class Game {
     this.sfx.musicOn = s.music;
     this.cam.sensitivity = s.sensitivity;
     this.cam.invertY = s.invertY;
+    this.applyGraphics(s.lowGraphics);
+  }
+
+  /** Low: no shadows, 1× resolution, fewer fighters in full detail. */
+  private applyGraphics(low: boolean): void {
+    if (this.graphicsLow === low) return;
+    const first = this.graphicsLow === null;
+    this.graphicsLow = low;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, low ? 1 : 1.75));
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.maxFull = low ? 2 : MAX_FULL;
+    this.maxLite = low ? 3 : MAX_LITE;
+    if (this.renderer.shadowMap.enabled === !low) return;
+    this.renderer.shadowMap.enabled = !low;
+    this.sun.castShadow = !low;
+    // Materials already compiled need rebuilding without (or with) shadows.
+    if (!first)
+      this.scene.traverse((o) => {
+        const m = (o as THREE.Mesh).material;
+        for (const mat of Array.isArray(m) ? m : m ? [m] : []) mat.needsUpdate = true;
+      });
   }
 
   updateSettings(patch: Partial<Settings>): void {
@@ -542,6 +570,13 @@ export class Game {
   }
 
   private begin(): void {
+    // Phones: full screen, sideways (where the browser allows it; it needs a tap to start).
+    if (this.touch.enabled && !document.fullscreenElement) {
+      document.documentElement
+        .requestFullscreen?.({ navigationUI: 'hide' })
+        .then(() => (screen.orientation as unknown as { lock?: (o: string) => Promise<void> }).lock?.('landscape'))
+        .catch(() => {});
+    }
     this.sfx.init();
     this.sfx.muted = false;
     this.sfx.startMusic();
@@ -558,6 +593,7 @@ export class Game {
 
   private pause(): void {
     document.getElementById('pause')!.classList.remove('hidden');
+    this.touch.release();
     // An online match can't stop for one player; only offline rounds actually pause.
     if (this.mode === 'online') return;
     this.state = 'paused';
@@ -753,6 +789,7 @@ export class Game {
     const pressed = this.input.consumePressed();
     this.input.pad.poll();
     this.padNav.update(now);
+    this.touch.update();
 
     if (pressed.includes('KeyM') && this.state !== 'locker') {
       this.updateSettings({ music: !this.settings.music });
@@ -854,10 +891,10 @@ export class Game {
     }
     onScreen.sort((p, q) => p.d - q.d);
     for (const { c, d } of onScreen) {
-      if (d < 20 && full < MAX_FULL) {
+      if (d < 20 && full < this.maxFull) {
         c.setLod('full');
         full++;
-      } else if (d < 42 && lite < MAX_LITE) {
+      } else if (d < 42 && lite < this.maxLite) {
         c.setLod('lite');
         lite++;
       } else c.setLod('proxy');
@@ -995,6 +1032,7 @@ export class Game {
 
   private finish(c: Character | null, timeUp: boolean, result?: RoundResult): void {
     this.state = 'over';
+    this.touch.release();
     this.recordRound(c);
     if (c) c.happy = true;
     this.sfx.setWind(0);

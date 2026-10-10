@@ -1308,3 +1308,280 @@ a.padFocus {
   font-size: 15px;
   letter-spacing: 1px;
 }
+
+/* ---------- Touch screens ---------- */
+#touch {
+  display: none;
+}
+body.touch #touch {
+  display: block;
+  position: fixed;
+  inset: 0;
+  pointer-events: auto;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+body.touch.touchHidden #touch {
+  display: none;
+}
+.tStick {
+  position: absolute;
+  left: 104px;
+  top: calc(100% - 110px);
+  width: 124px;
+  height: 124px;
+  margin: -62px 0 0 -62px;
+  border: 3px solid rgba(255, 255, 255, 0.45);
+  border-radius: 50%;
+  background: rgba(20, 16, 36, 0.25);
+  opacity: 0.55;
+  pointer-events: none;
+}
+.tStick.on {
+  opacity: 1;
+}
+.tKnob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 56px;
+  height: 56px;
+  margin: -28px 0 0 -28px;
+  border: 3px solid #2c2633;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.85);
+}
+.tBtn {
+  position: absolute;
+  margin: 0;
+  padding: 0;
+  border: 3px solid #2c2633;
+  border-radius: 50%;
+  box-shadow: 0 4px 0 #2c2633;
+  font-family: 'Titan One', 'Rubik', sans-serif;
+  letter-spacing: 0.5px;
+  touch-action: none;
+  opacity: 0.88;
+}
+.tBtn:active {
+  box-shadow: 0 1px 0 #2c2633;
+  transform: translateY(3px);
+}
+.tFire {
+  right: calc(26px + env(safe-area-inset-right));
+  bottom: 118px;
+  width: 98px;
+  height: 98px;
+  background: #ff5a4d;
+  color: #fff;
+  font-size: 18px;
+}
+.tJump {
+  right: calc(142px + env(safe-area-inset-right));
+  bottom: 34px;
+  width: 84px;
+  height: 84px;
+  background: #ffe14d;
+  color: #2c2633;
+  font-size: 15px;
+}
+.tMelee {
+  right: calc(30px + env(safe-area-inset-right));
+  bottom: 24px;
+  width: 70px;
+  height: 70px;
+  background: #7fd4ff;
+  color: #2c2633;
+  font-size: 12px;
+}
+.tPause {
+  position: absolute;
+  top: calc(12px + env(safe-area-inset-top));
+  right: calc(12px + env(safe-area-inset-right));
+  width: 46px;
+  height: 46px;
+  margin: 0;
+  padding: 0;
+  border: 3px solid #2c2633;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 3px 0 #2c2633;
+  color: #2c2633;
+  font: 900 16px 'Rubik', sans-serif;
+}
+#rotateHint {
+  display: none;
+}
+@media (orientation: portrait) {
+  body.touch #rotateHint {
+    display: block;
+    position: absolute;
+    left: 50%;
+    top: 38%;
+    transform: translateX(-50%);
+    padding: 10px 18px;
+    border: 3px solid #2c2633;
+    border-radius: 14px;
+    background: #ffe14d;
+    color: #2c2633;
+    font: 800 15px 'Rubik', sans-serif;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+}
+/* Make room for the buttons. */
+body.touch #race {
+  top: 76px;
+  bottom: 236px;
+  right: calc(20px + env(safe-area-inset-right));
+}
+body.touch #topbar {
+  transform: translateX(-50%) scale(0.9);
+}
+body.touch #bottom {
+  bottom: 10px;
+  gap: 5px;
+  z-index: 3;
+}
+body.touch #touch {
+  z-index: 1;
+}
+body.touch #hpBar,
+body.touch #hpFill {
+  width: 190px;
+  background-size: 190px 100%;
+}
+body.touch #weapon {
+  font-size: 14px;
+}
+body.touch #trapSlots {
+  position: relative;
+  z-index: 2;
+  pointer-events: auto;
+}
+body.touch .slot {
+  width: 62px;
+  padding: 4px 2px;
+  font-size: 10px;
+  touch-action: none;
+}
+body.touch .slot .n {
+  font-size: 15px;
+}
+body.touch #floorBox {
+  transform: scale(0.85);
+  transform-origin: top left;
+}
+@media (max-height: 430px) {
+  body.touch #floorBox {
+    transform: scale(0.7);
+  }
+  body.touch .tFire {
+    bottom: 100px;
+    width: 86px;
+    height: 86px;
+  }
+  body.touch #race {
+    bottom: 205px;
+  }
+}
+@media (orientation: portrait) {
+  /* Upright phones: weapon, health and traps go under the clock, clear of the buttons. */
+  body.touch #bottom {
+    top: 64px;
+    bottom: auto;
+  }
+  body.touch #rotateHint {
+    top: 46%;
+  }
+}
+/* Phones: a shorter, smaller kill feed that stays clear of the buttons. */
+body.touch #feed {
+  top: 66px;
+  right: calc(64px + env(safe-area-inset-right));
+  width: 300px;
+  gap: 3px;
+}
+body.touch .feedItem {
+  padding: 3px 10px;
+  font-size: 11px;
+}
+body.touch .feedItem:nth-child(n + 4) {
+  display: none;
+}
+
+/* Phones held sideways (short screens): logo and play card side by side, everything tighter. */
+@media (max-height: 520px) and (orientation: landscape) {
+  .homeInner {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 14px;
+    padding: 10px calc(14px + env(safe-area-inset-right)) 10px calc(14px + env(safe-area-inset-left));
+  }
+  .brand {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .emblem {
+    width: 58px;
+    margin-bottom: -8px;
+  }
+  .logoText {
+    font-size: clamp(34px, 6.4vw, 60px);
+  }
+  .logoText .extrude {
+    -webkit-text-stroke: 9px #2c2633;
+  }
+  .tagline {
+    margin-top: 8px;
+    font-size: 15px;
+    -webkit-text-stroke: 4px #2c2633;
+  }
+  .subtag {
+    font-size: 11px;
+  }
+  .playCard {
+    width: min(360px, 50vw);
+    padding: 10px 14px 8px;
+    border-radius: 18px;
+  }
+  .playingAs {
+    font-size: 13px;
+  }
+  .headline {
+    margin: 4px 0 6px;
+    font-size: 20px;
+  }
+  .bigPlay {
+    padding: 9px;
+    font-size: 24px;
+    letter-spacing: 4px;
+  }
+  .homeStats {
+    margin: 6px 2px;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  .homeGrid {
+    gap: 6px;
+  }
+  .homeGrid .gridBtn {
+    padding: 7px 4px;
+    font-size: 11px;
+  }
+  .homeLinks {
+    margin-top: 8px;
+    font-size: 12px;
+  }
+  .homeFoot {
+    margin-top: 6px;
+    font-size: 11px;
+  }
+  .sheet {
+    max-height: calc(100vh - 20px);
+    overflow-y: auto;
+  }
+}
