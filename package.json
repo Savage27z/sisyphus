@@ -12,7 +12,7 @@
     "start": "npm run build && node server/index.mjs"
   },
   "dependencies": {
-    "@dimforge/rapier3d-compat": "^0.21.0",
+    "@dimforge/rapier3d": "^0.21.0",
     "@pixiv/three-vrm": "^3.5.5",
     "three": "^0.186.1",
     "ws": "^8.22.0"
@@ -21,6 +21,7 @@
     "@types/three": "^0.186.0",
     "sharp": "^0.35.5",
     "typescript": "~5.9.3",
-    "vite": "^8.3.3"
+    "vite": "^8.3.3",
+    "vite-plugin-wasm": "^3.6.0"
   }
 }

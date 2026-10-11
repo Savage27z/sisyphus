@@ -1,4 +1,4 @@
-import RAPIER from '@dimforge/rapier3d-compat';
+import RAPIER from '@dimforge/rapier3d';
 import * as THREE from 'three';
 import { CHAR_HALF_TOTAL, CONFIG } from './config';
 import { GUN_IDS, MELEE_IDS, WEAPONS, isGun, makeWeaponMesh, type GunKind, type MeleeKind, type WeaponKind } from './combat';

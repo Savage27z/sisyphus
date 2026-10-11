@@ -1,9 +1,8 @@
-import RAPIER from '@dimforge/rapier3d-compat';
 import * as THREE from 'three';
 import './style.css';
 import { createRig, loadAssets } from './assets';
 import { CONFIG } from './config';
-import { Game } from './game';
+import type { Game } from './game';
 import { BASES, MALE_BASES, loadProfile, randomStyle } from './style';
 
 async function boot(): Promise<void> {
@@ -27,7 +26,11 @@ async function boot(): Promise<void> {
   const others = BASES.map((_, i) => i).filter((i) => MALE_BASES.includes(i) !== MALE_BASES.includes(mine));
   const other = others[Math.floor(Math.random() * others.length)];
   const bootBases = [mine, other];
-  const [assets] = await Promise.all([loadAssets(bootBases, (f) => progress(f * 0.8)), RAPIER.init()]);
+  // The game code (with the physics engine, a separate .wasm file) downloads while the
+  // characters do, instead of one after the other.
+  const gameModule = import('./game');
+  const assets = await loadAssets(bootBases, (f) => progress(f * 0.8));
+  const { Game: GameClass } = await gameModule;
   progress(0.85);
   const styles = [profile.style];
   const order = [other, mine, other, mine, other];
@@ -42,7 +45,7 @@ async function boot(): Promise<void> {
   progress(0.93);
   // Let the loading text paint (setTimeout, not rAF, so a background tab still finishes loading).
   await new Promise((r) => setTimeout(r, 0));
-  const game = new Game(canvas, renderer, assets, rigs, styles, profile);
+  const game = new GameClass(canvas, renderer, assets, rigs, styles, profile);
   // Compile the shaders behind the loading screen rather than as a stutter on the first frames
   // (capped, in case a driver is slow about it).
   await Promise.race([renderer.compileAsync(game.scene, game.cam.cam).catch(() => {}), new Promise((r) => setTimeout(r, 6000))]);

@@ -1,4 +1,4 @@
-import RAPIER from '@dimforge/rapier3d-compat';
+import RAPIER from '@dimforge/rapier3d';
 import { VRMUtils } from '@pixiv/three-vrm';
 import * as THREE from 'three';
 import { Airdrops } from './airdrop';

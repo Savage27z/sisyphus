@@ -1,4 +1,4 @@
-import RAPIER from '@dimforge/rapier3d-compat';
+import RAPIER from '@dimforge/rapier3d';
 import * as THREE from 'three';
 import { Arena, FH, LEVELS, SLAB, inRect, type Ambience, type MapId, type Rect, type Waypoint } from './arena';
 import { BoulderLane, FlipFloor, Ghost, LaserGate, Sweeper, Turntable, WindZone, hash01 } from './hazards';

@@ -1,4 +1,4 @@
-import RAPIER from '@dimforge/rapier3d-compat';
+import RAPIER from '@dimforge/rapier3d';
 import * as THREE from 'three';
 import { WEAPONS } from './combat';
 import { TRAP_KINDS } from './traps';

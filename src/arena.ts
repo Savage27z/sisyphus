@@ -1,4 +1,4 @@
-import RAPIER from '@dimforge/rapier3d-compat';
+import RAPIER from '@dimforge/rapier3d';
 import * as THREE from 'three';
 import { CONFIG } from './config';
 import { BoulderLane, Conveyor, CrumbleTile, FlipFloor, Ghost, LaserGate, MovingPlatform, Pendulum, Pusher, Sweeper, Turntable, WindZone } from './hazards';

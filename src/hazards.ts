@@ -1,4 +1,4 @@
-import RAPIER from '@dimforge/rapier3d-compat';
+import RAPIER from '@dimforge/rapier3d';
 import * as THREE from 'three';
 import { CONFIG } from './config';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
