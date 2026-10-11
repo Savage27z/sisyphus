@@ -12,6 +12,9 @@ const gradient = (() => {
 })();
 
 const cache = new Map<string, THREE.MeshToonMaterial>();
+/** Materials handed out from the cache: shared by every map, so never freed with one. */
+const shared = new WeakSet<THREE.Material>();
+export const isSharedMaterial = (m: THREE.Material): boolean => shared.has(m);
 
 /**
  * Surface detail drawn by the shader from world position (no textures to download, and it
@@ -43,12 +46,14 @@ export interface ToonOpts {
   accent?: number;
   /** Pattern size in metres (default 1). */
   scale?: number;
+  /** A one-off material (its own texture, say): not cached, and freed with the map that made it. */
+  fresh?: boolean;
 }
 
 /** Shared cel-shaded material. */
 export function toon(color: THREE.ColorRepresentation, opts: ToonOpts = {}): THREE.MeshToonMaterial {
   const key = `${new THREE.Color(color).getHex()}|${opts.emissive ?? 0}|${opts.opacity ?? 1}|${opts.map?.uuid ?? ''}|${opts.double ? 2 : 1}|${opts.pattern ?? ''}|${opts.accent ?? ''}|${opts.scale ?? 1}`;
-  let m = cache.get(key);
+  let m = opts.fresh ? undefined : cache.get(key);
   if (!m) {
     m = new THREE.MeshToonMaterial({
       color,
@@ -61,7 +66,10 @@ export function toon(color: THREE.ColorRepresentation, opts: ToonOpts = {}): THR
       side: opts.double ? THREE.DoubleSide : THREE.FrontSide,
     });
     if (opts.pattern) addPattern(m, opts.pattern, opts.accent ?? 0xffffff, opts.scale ?? 1);
-    cache.set(key, m);
+    if (!opts.fresh) {
+      cache.set(key, m);
+      shared.add(m);
+    }
   }
   return m;
 }

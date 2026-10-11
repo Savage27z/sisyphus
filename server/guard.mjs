@@ -17,6 +17,21 @@ const FLOOR_H = 6;
 const ROOF = 12;
 const FLAG = { x: 0, y: ROOF * FLOOR_H, z: 0 };
 export const STRIKES_TO_FLAG = 8;
+/**
+ * Climb pace: the least time a run of floors can honestly take. Speed limits alone let a modified
+ * client float straight up through the floors at stair-sprint speed; real routes wind between
+ * stairs, ramps and obstacles. Measured with bots, the fastest climbs were 18 s for three floors
+ * (Mount Olympus; 48-51 s on the other maps) and about 140 s to the roof; these leave honest
+ * players room to be two to three times quicker. Breaking one doesn't block movement (that would
+ * snowball into strikes); it bars the fighter from the flag and from paid places this round.
+ */
+const CLIMB_PACE = [
+  { floors: 3, seconds: 6 },
+  { floors: 6, seconds: 14 },
+  { floors: 12, seconds: 40 },
+];
+/** Longest weapon reach (the Railgun, 90 m) plus slack. */
+const MAX_REACH = 95;
 
 const floorOf = (y) => Math.max(0, Math.min(ROOF, Math.floor((y + 0.2) / FLOOR_H)));
 /** Respawns put you back in the start area (each map's spawnPoints, with a margin). */
@@ -45,11 +60,12 @@ export class Guard {
     let tr = this.track.get(netId);
     if (!tr) {
       // First sighting (round start or drop-in): you start at the bottom.
-      tr = { hist: [], verified: 0 };
+      tr = { hist: [], verified: 0, floor: 0, reachedAt: [] };
       this.track.set(netId, tr);
     }
     const hist = tr.hist;
     const prev = hist[hist.length - 1];
+    const f = floorOf(y);
     if (this.inSpawnArea(x, y, z)) {
       tr.verified = 0;
     } else if (prev) {
@@ -67,7 +83,16 @@ export class Guard {
         return false;
       }
       // Height only counts if we watched you get there: one floor at a time, no silences.
-      const f = floorOf(y);
+      if (f > tr.floor && !tr.suspect) {
+        for (const { floors, seconds } of CLIMB_PACE) {
+          const from = f >= floors ? tr.reachedAt[f - floors] : undefined;
+          if (from !== undefined && (t - from) / 1000 < seconds) {
+            tr.suspect = `climbed floors ${f - floors}->${f} in ${((t - from) / 1000).toFixed(1)}s`;
+            console.warn(`guard: pace: ${netId} ${tr.suspect}`);
+            break;
+          }
+        }
+      }
       const continuous = (t - prev.t) / 1000 <= CONTINUOUS;
       // Back from a silence more than a floor above where we last saw you climb: no.
       if (!continuous && f > tr.verified + 1) {
@@ -77,6 +102,11 @@ export class Guard {
       if (!continuous) tr.verified = Math.min(tr.verified, f);
       else if (f <= tr.verified + 1) tr.verified = f;
     }
+    // When each floor of the current climb was first reached (a fall starts the climb again there).
+    if (f < tr.floor) tr.reachedAt.length = f + 1;
+    for (let k = tr.floor + 1; k <= f; k++) tr.reachedAt[k] = t;
+    if (tr.reachedAt[0] === undefined) tr.reachedAt[0] = t;
+    tr.floor = f;
     hist.push({ t, x, y, z });
     if (hist.length > 120) hist.splice(0, hist.length - 120);
     return true;
@@ -91,7 +121,7 @@ export class Guard {
   atFlag(netId) {
     const tr = this.track.get(netId);
     const p = this.last(netId);
-    if (!tr || !p || tr.verified < ROOF) return false;
+    if (!tr || !p || tr.verified < ROOF || tr.suspect) return false;
     return Math.hypot(p.x - FLAG.x, p.z - FLAG.z) < 2.5 && p.y > FLAG.y - 1 && p.y < FLAG.y + 2.5;
   }
 
@@ -100,7 +130,18 @@ export class Guard {
     const pa = this.last(a);
     const pb = this.last(b);
     if (!pa || !pb) return true;
-    return Math.hypot(pa.x - pb.x, pa.y - pb.y, pa.z - pb.z) < 36;
+    return Math.hypot(pa.x - pb.x, pa.y - pb.y, pa.z - pb.z) < MAX_REACH;
+  }
+
+  /** Climbed faster than any honest route allows this round: no flag, no paid place. */
+  suspect(netId) {
+    return !!this.track.get(netId)?.suspect;
+  }
+
+  /** Is this point within `r` metres of where the fighter was last seen (unknown: yes)? */
+  near(netId, x, y, z, r) {
+    const p = this.last(netId);
+    return !p || Math.hypot(p.x - x, p.y - y, p.z - z) < r;
   }
 
   strike(clientId) {

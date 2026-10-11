@@ -28,7 +28,7 @@ import { Net, type RosterEntry } from './net';
 import { PlayerController } from './player';
 import { loadRecords, loadSettings, saveRecords, saveSettings, type Records, type Settings } from './prefs';
 import type { AnimeRig } from './rig';
-import { applyStyle, BASES, MALE_BASES, mulberry32, randomStyle, saveProfile, type Profile, type Style } from './style';
+import { applyStyle, BASES, MALE_BASES, mulberry32, randomStyle, resolveStyle, saveProfile, type Profile, type Style } from './style';
 import { Traps } from './traps';
 
 type GameState = 'menu' | 'locker' | 'lobby' | 'playing' | 'paused' | 'over';
@@ -709,7 +709,8 @@ export class Game {
 
   /** Server said go: build everyone, spawn, count down to the shared clock. */
   private onlineSpec(e: RosterEntry, i: number, used: Set<string>): RosterSpec {
-    const style = e.kind === 'human' && e.style ? e.style : randomStyle(mulberry32(e.seed ?? i));
+    // Another player's look comes over the network: always bring it into range before using it.
+    const style = e.kind === 'human' && e.style ? resolveStyle(e.style) : randomStyle(mulberry32(e.seed ?? i));
     const name = e.kind === 'human' ? e.name ?? 'Player' : this.botName(style, used, e.seed ?? i);
     return {
       netId: e.netId,

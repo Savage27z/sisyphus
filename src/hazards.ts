@@ -382,7 +382,8 @@ export class Conveyor {
     const uv = geo.attributes.uv as THREE.BufferAttribute;
     for (let i = 0; i < uv.count; i++) uv.setXY(i, (uv.getX(i) * wid) / 1.2, (uv.getY(i) * len) / 1.2);
     geo.rotateX(-Math.PI / 2); // plane +v now points to -z
-    const mesh = new THREE.Mesh(geo, toon(0xffffff, { map: this.tex }));
+    // Each belt scrolls its own texture, so its material is its own too (not the shared cache).
+    const mesh = new THREE.Mesh(geo, toon(0xffffff, { map: this.tex, fresh: true }));
     const motion = Math.atan2(vel.x, vel.z); // yaw that maps -z to the motion direction
     mesh.rotation.y = motion + Math.PI;
     mesh.position.set((x0 + x1) / 2, y + 0.015, (z0 + z1) / 2);

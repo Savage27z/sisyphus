@@ -104,6 +104,9 @@ export class Traps {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   addRemote(m: any, owner: Character | null): void {
     if (this.list.some((t) => t.id === m.id)) return;
+    // From another player's machine: ignore anything malformed rather than crash on it.
+    const ok = (a: unknown) => Array.isArray(a) && a.length === 3 && a.every((n) => Number.isFinite(n));
+    if (!TRAP_KINDS.includes(m.kind) || !ok(m.pos) || !ok(m.normal) || !ok(m.dir)) return;
     const v = (a: number[]) => new THREE.Vector3(a[0], a[1], a[2]);
     this.create(String(m.id), m.kind as TrapKind, owner, v(m.pos), v(m.normal).normalize(), v(m.dir), Number(m.ground));
   }

@@ -22,6 +22,8 @@ export class Stats {
       }
     }
     this.timer = null;
+    /** Names of people seen but not yet in a round (only players of public rounds are stored). */
+    this.names = new Map();
   }
 
   player(pid) {
@@ -30,7 +32,14 @@ export class Stats {
   }
 
   seen(pid, name) {
-    const p = this.player(pid);
+    const p = this.data.players[pid];
+    if (!p) {
+      // Remembered in memory only, so connecting over and over can't grow the file.
+      this.names.delete(pid);
+      this.names.set(pid, name);
+      if (this.names.size > 5000) this.names.delete(this.names.keys().next().value);
+      return;
+    }
     p.name = name;
     p.lastSeen = Date.now();
     this.save();
@@ -38,7 +47,12 @@ export class Stats {
 
   /** A public round finished. `entrants` are the humans' player ids. */
   recordRound(r) {
-    for (const pid of r.entrants) this.player(pid).rounds++;
+    for (const pid of r.entrants) {
+      const p = this.player(pid);
+      if (!p.name && this.names.has(pid)) p.name = this.names.get(pid);
+      p.lastSeen = Date.now();
+      p.rounds++;
+    }
     if (r.winnerPid) this.player(r.winnerPid).wins++;
     this.data.rounds.push({
       at: Date.now(),
@@ -63,7 +77,7 @@ export class Stats {
   }
 
   me(pid) {
-    const p = this.player(pid);
+    const p = this.data.players[pid] ?? { name: this.names.get(pid) ?? '', wins: 0, rounds: 0 };
     const wins = this.data.rounds
       .filter((r) => r.winner === pid)
       .slice(-12)

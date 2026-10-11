@@ -14,10 +14,14 @@ export interface Prize {
   at: number;
   /** The address sent in, once it's been accepted. */
   wallet?: string;
+  /** When it was first sent (it can be corrected for a short while after). */
+  walletAt?: number;
 }
 
 const KEY = 'sisyphus.prizes.v1';
 const TTL_MS = 7 * 24 * 3600 * 1000;
+/** Matches the server: an address can be corrected for 15 minutes, then it's final. */
+const EDIT_MS = 15 * 60 * 1000;
 const $ = (id: string) => document.getElementById(id)!;
 const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
 const short = (w: string) => `${w.slice(0, 4)}…${w.slice(-4)}`;
@@ -116,7 +120,11 @@ export class Claims {
     $('claimForm').classList.toggle('hidden', !on);
     $('claimDone').classList.toggle('hidden', on);
     if (!on && this.current?.wallet) {
-      $('claimDoneText').innerHTML = `Your prize goes to <b>${esc(short(this.current.wallet))}</b>. Prizes are sent by hand, so give it a little while.`;
+      const editable = Date.now() - (this.current.walletAt ?? 0) < EDIT_MS;
+      $('claimDoneText').innerHTML =
+        `Your prize goes to <b>${esc(short(this.current.wallet))}</b>. Prizes are sent by hand, so give it a little while.` +
+        (editable ? ' You can still fix a typo for 15 minutes.' : '');
+      $('claimChange').classList.toggle('hidden', !editable);
     }
     if (on) setTimeout(() => this.input.focus(), 50);
   }
@@ -146,7 +154,8 @@ export class Claims {
         return;
       }
       p.wallet = wallet;
-      store(load().map((q) => (q.token === p.token ? { ...q, wallet } : q)));
+      p.walletAt ??= Date.now();
+      store(load().map((q) => (q.token === p.token ? { ...q, wallet, walletAt: p.walletAt } : q)));
       $('claimStatus').textContent = '';
       this.showForm(false);
       this.onChange();

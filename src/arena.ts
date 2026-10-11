@@ -2,7 +2,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import * as THREE from 'three';
 import { CONFIG } from './config';
 import { BoulderLane, Conveyor, CrumbleTile, FlipFloor, Ghost, LaserGate, MovingPlatform, Pendulum, Pusher, Sweeper, Turntable, WindZone } from './hazards';
-import { StaticBatcher, canvasTexture, toon } from './toon';
+import { StaticBatcher, canvasTexture, isSharedMaterial, toon } from './toon';
 import type { Character } from './character';
 import type { Game } from './game';
 
@@ -145,6 +145,14 @@ export abstract class Arena {
       o.traverse((m) => {
         const mesh = m as THREE.Mesh;
         mesh.geometry?.dispose?.();
+        // Materials made for this map alone (lasers, nets, belts, ghosts) go with it; the shared
+        // cached ones stay for the next map. Every round loads a map, so this adds up.
+        const mats = Array.isArray(mesh.material) ? mesh.material : mesh.material ? [mesh.material] : [];
+        for (const mat of mats) {
+          if (isSharedMaterial(mat)) continue;
+          (mat as THREE.MeshBasicMaterial).map?.dispose();
+          mat.dispose();
+        }
       });
     }
     // Free-standing colliders first; then bodies, which take their own colliders with them.

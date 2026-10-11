@@ -9,6 +9,8 @@ import path from 'node:path';
 const MAX_CLAIMS = 1000;
 /** A winner has this long to send their wallet address. */
 const CLAIM_TTL_MS = 7 * 24 * 3600 * 1000;
+/** How long after first sending it a winner can still correct their address. */
+const WALLET_EDIT_MS = 15 * 60 * 1000;
 const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 export const ORDINAL = ['1st', '2nd', '3rd'];
 
@@ -108,8 +110,14 @@ export class Prizes {
     if (!isSolanaAddress(wallet)) return { error: 'That is not a Solana wallet address.' };
     const updated = !!claim.wallet && claim.wallet !== wallet;
     if (claim.wallet === wallet) return { claim, updated: false, same: true };
+    // A typo can be fixed for a little while; after that the address is final, so nobody can
+    // switch it once the prize may already have been sent.
+    if (claim.wallet && Date.now() - (claim.firstWalletAt ?? claim.walletAt) > WALLET_EDIT_MS) {
+      return { error: 'Your wallet address is locked in now. If something is wrong, contact us on X.' };
+    }
     claim.wallet = wallet;
     claim.walletAt = Date.now();
+    claim.firstWalletAt ??= claim.walletAt;
     this.save();
     return { claim, updated };
   }

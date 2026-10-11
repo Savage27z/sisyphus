@@ -61,6 +61,12 @@ const LOOT = ['knife', 'bat', 'pushgun', 'rocket', 'railgun', 'freeze'];
 /** The lobby's two racks hold the big guns: the start-line rush. */
 const POWER = ['rocket', 'railgun'];
 const TRAPS = ['grease', 'spring', 'trapdoor', 'beartrap'];
+/** Traps a fighter starts with (config START_TRAPS); each crate or rack adds one. */
+const START_TRAPS = 7;
+/** A paid place needs a real climb (an idle tab at the start line gets nothing). */
+const MIN_PRIZE_FLOOR = 3;
+/** Connections from one address (one person can't fill a prize round with tabs). */
+const MAX_CONN_PER_IP = 8;
 /** Maps (src/maps). Public arenas take them in turn; a private room's host picks. */
 const MAPS = ['olympus', 'tower', 'construction', 'hotel'];
 let nextArenaMap = 0;
@@ -204,7 +210,7 @@ function handleClaim(req, res) {
     return res.end();
   }
   if (req.method !== 'POST') return reply(405, { error: 'POST only.' });
-  const ip = String(req.headers['x-forwarded-for'] ?? req.socket.remoteAddress ?? '').split(',')[0].trim();
+  const ip = clientIp(req);
   const t = now();
   const hit = claimHits.get(ip);
   if (!hit || t - hit.at > 60000) claimHits.set(ip, { n: 1, at: t });
@@ -245,6 +251,40 @@ function walletMessage(c, updated) {
 }
 
 // ------------------------------------------------------------------ rooms
+
+/**
+ * The caller's address. Railway's proxy appends the real one to X-Forwarded-For, so the last
+ * entry is trustworthy; earlier entries can be anything the client sent.
+ */
+function clientIp(req) {
+  const fwd = String(req.headers['x-forwarded-for'] ?? '').split(',').map((v) => v.trim()).filter(Boolean);
+  return fwd.at(-1) || req.socket.remoteAddress || '?';
+}
+
+/** A fighter's look, as small whole numbers only (the game maps each onto its own lists). */
+function cleanStyle(s) {
+  if (!s || typeof s !== 'object') return null;
+  const n = (v) => (Number.isFinite(v) ? Math.min(63, Math.max(0, Math.floor(v))) : 0);
+  return { base: n(s.base), hair: n(s.hair), outfit: n(s.outfit), eyes: n(s.eyes), hat: n(s.hat) };
+}
+
+/**
+ * Hits as fast as the game can make them and no faster: the Blaster and a knife together land
+ * about 7 a second on one target; a rocket's splash reaches several targets at once.
+ */
+function hitAllowed(room, by, target) {
+  const t = now();
+  const ok = (key, perSecond) => {
+    const b = room.hits.get(key);
+    if (!b || t - b.at > 1000) {
+      room.hits.set(key, { n: 1, at: t });
+      return true;
+    }
+    return ++b.n <= perSecond;
+  };
+  return ok(`${by}>${target}`, 9) && ok(by, 40);
+}
+
 
 function code() {
   const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -298,7 +338,12 @@ function broadcast(room, msg, except) {
  */
 function prizeRound(room) {
   if (room.phase !== 'lobby') return room.prizeLocked;
-  return room.public && P().amount > 0 && room.clients.size >= P().minPlayers;
+  return room.public && P().amount > 0 && distinctPeople(room) >= P().minPlayers;
+}
+
+/** Real players in a room, counting everyone on one address once. */
+function distinctPeople(room) {
+  return new Set([...room.clients.values()].map((c) => c.ip)).size;
 }
 
 /** The pot a round is playing for: fixed when it starts, so changing it mid-round waits for the next. */
@@ -365,7 +410,8 @@ function startMatch(room) {
   for (let i = roster.length; i < Math.min(MAX_FIGHTERS, fill); i++) {
     roster.push({ netId: `b:${i}`, kind: 'bot', owner: room.botOwner, seed: Math.floor(Math.random() * 2 ** 31), spawn: room.nextSpawn++ });
   }
-  room.prizeLocked = room.public && P().amount > 0 && roster.filter((e) => e.kind === 'human').length >= P().minPlayers;
+  // Real players are counted per address, so a handful of tabs can't turn a round into a prize round.
+  room.prizeLocked = room.public && P().amount > 0 && distinctPeople(room) >= P().minPlayers;
   room.pot = room.prizeLocked ? { amount: P().amount, currency: P().currency, split: [...P().split] } : null;
   room.phase = 'playing';
   room.at = now() + COUNTDOWN_MS;
@@ -376,6 +422,9 @@ function startMatch(room) {
   room.fresh = new Map();
   room.nextCrate = 1;
   room.guard = new Guard(room.map);
+  room.traps = new Map();
+  room.hits = new Map();
+  room.lastTake = new Map();
   room.entrants = new Set([...room.clients.values()].map((c) => c.pid).filter(Boolean));
   broadcast(room, { t: 'start', at: room.at, roster, map: room.map });
   sendRoom(room);
@@ -441,11 +490,17 @@ function placements(room, who, reason) {
   for (const e of room.roster) {
     if (e.kind !== 'human' || !room.heights.has(e.netId)) continue;
     const client = room.clients.get(e.owner);
-    if (!client || room.guard.flagged(client.id)) continue;
-    out.push({ netId: e.netId, client, name: client.name, pid: client.pid, y: room.heights.get(e.netId) });
+    if (!client || room.guard.flagged(client.id) || room.guard.suspect(e.netId)) continue;
+    const y = room.heights.get(e.netId);
+    if (Math.floor((y + 0.2) / 6) < MIN_PRIZE_FLOOR) continue;
+    out.push({ netId: e.netId, client, name: client.name, pid: client.pid, y });
   }
   out.sort((a, b) => Number(b.netId === who) - Number(a.netId === who) || b.y - a.y);
-  return out.map((p) => ({ ...p, reason: p.netId === who ? reason : 'height' }));
+  // One paid place per address: extra tabs or accounts from the same connection don't stack.
+  const seen = new Set();
+  return out
+    .filter((p) => !seen.has(p.client.ip) && seen.add(p.client.ip))
+    .map((p) => ({ ...p, reason: p.netId === who ? reason : 'height' }));
 }
 
 function roundMessage(room, claims) {
@@ -609,7 +664,7 @@ function handle(client, msg) {
     case 'hello':
     case 'profile': {
       client.name = String(msg.name ?? 'Player').replace(/[\u0000-\u001f]/g, '').slice(0, 14).trim() || 'Player';
-      client.style = msg.style && typeof msg.style === 'object' ? msg.style : null;
+      client.style = cleanStyle(msg.style);
       // A random secret kept in the player's browser gives them a stable id across visits.
       if (typeof msg.secret === 'string' && /^[0-9a-f]{32,64}$/.test(msg.secret)) {
         client.pid = crypto.createHash('sha256').update(`pid:${msg.secret}`).digest('hex').slice(0, 16);
@@ -680,7 +735,7 @@ function handle(client, msg) {
     case 'hit': {
       if (room.phase !== 'playing' || !owns(room, client, msg.by)) return;
       const target = String(msg.target ?? '');
-      if (!room.guard.inReach(String(msg.by), target)) return;
+      if (!room.guard.inReach(String(msg.by), target) || !hitAllowed(room, String(msg.by), target)) return;
       const ownerId = target.startsWith('p:') ? Number(target.slice(2)) : room.botOwner;
       const owner = room.clients.get(ownerId);
       if (!owner || owner === client) return;
@@ -688,11 +743,23 @@ function handle(client, msg) {
       send(owner, { t: 'hit', target, by: String(msg.by), dir, force: num(msg.force, 0, 30), up: num(msg.up, 0, 12), stun: num(msg.stun, 0, 3), dmg: num(msg.dmg, 0, 80), root: num(msg.root, 0, 3) });
       return;
     }
-    case 'trap':
-      if (room.phase === 'playing' && owns(room, client, msg.owner)) broadcast(room, msg, client);
+    case 'trap': {
+      if (room.phase !== 'playing' || !owns(room, client, msg.owner)) return;
+      const owner = String(msg.owner);
+      const vec = (a) => Array.isArray(a) && a.length === 3 && a.every((v) => Number.isFinite(v) && Math.abs(v) < 500);
+      if (!TRAPS.includes(msg.kind) || !vec(msg.pos) || !vec(msg.normal) || !vec(msg.dir) || !Number.isFinite(msg.ground)) return;
+      // Only where the owner is standing, and only as many as they've actually got.
+      if (!room.guard.near(owner, msg.pos[0], msg.pos[1], msg.pos[2], 8)) return;
+      const used = room.traps.get(owner) ?? { placed: 0, allowance: START_TRAPS };
+      if (used.placed >= used.allowance) return;
+      used.placed++;
+      room.traps.set(owner, used);
+      const id = String(msg.id ?? '').slice(0, 40);
+      broadcast(room, { t: 'trap', id, kind: msg.kind, owner, pos: msg.pos, normal: msg.normal, dir: msg.dir, ground: msg.ground }, client);
       return;
+    }
     case 'trapUse':
-      if (room.phase === 'playing') broadcast(room, { t: 'trapUse', id: String(msg.id ?? '') }, client);
+      if (room.phase === 'playing') broadcast(room, { t: 'trapUse', id: String(msg.id ?? '').slice(0, 40) }, client);
       return;
     case 'flagTry': {
       const who = String(msg.who);
@@ -715,6 +782,13 @@ function handle(client, msg) {
       return;
     case 'take': {
       if (room.phase !== 'playing' || !room.crates.has(msg.crate) || !owns(room, client, msg.who)) return;
+      // A fighter can't vacuum up every crate on the map at once.
+      const taker = String(msg.who);
+      if (now() - (room.lastTake.get(taker) ?? 0) < 1000) return;
+      room.lastTake.set(taker, now());
+      const allowance = room.traps.get(taker) ?? { placed: 0, allowance: START_TRAPS };
+      allowance.allowance++;
+      room.traps.set(taker, allowance);
       const crate = room.crates.get(msg.crate);
       room.crates.delete(msg.crate);
       const pool = crate.rack && crate.spot < 2 ? POWER : LOOT;
@@ -734,8 +808,18 @@ function handle(client, msg) {
 // ------------------------------------------------------------------ sockets
 
 const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 64 * 1024 });
-wss.on('connection', (ws) => {
-  const client = { id: nextClient++, ws, name: 'Player', style: null, room: null, focused: true, pid: null, budget: 0, budgetAt: now() };
+const connPerIp = new Map();
+wss.on('connection', (ws, req) => {
+  const ip = clientIp(req);
+  const open = (connPerIp.get(ip) ?? 0) + 1;
+  if (open > MAX_CONN_PER_IP) return ws.close(1008, 'too many connections');
+  connPerIp.set(ip, open);
+  ws.on('close', () => {
+    const n = (connPerIp.get(ip) ?? 1) - 1;
+    if (n > 0) connPerIp.set(ip, n);
+    else connPerIp.delete(ip);
+  });
+  const client = { id: nextClient++, ws, ip, name: 'Player', style: null, room: null, focused: true, pid: null, budget: 0, budgetAt: now() };
   send(client, { t: 'welcome', id: client.id });
   ws.on('message', (raw) => {
     // Flood guard: ~60 state packets/s is normal; far beyond that is someone misbehaving.
@@ -752,7 +836,13 @@ wss.on('connection', (ws) => {
     } catch {
       return;
     }
-    if (msg && typeof msg.t === 'string') handle(client, msg);
+    if (!msg || typeof msg.t !== 'string') return;
+    // One odd message must never take the whole server (and everyone's round) down with it.
+    try {
+      handle(client, msg);
+    } catch (e) {
+      console.warn(`message ${String(msg.t).slice(0, 20)} from ${client.name} (${client.id}) failed: ${e.message}`);
+    }
   });
   ws.on('close', () => leave(client));
 });

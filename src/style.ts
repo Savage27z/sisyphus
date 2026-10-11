@@ -56,7 +56,11 @@ export const PRESETS: { name: string; blurb: string; style: Style }[] = [
   { name: 'Ghost', blurb: 'Silver hair, midnight track suit. Silent climber.', style: { base: 6, hair: 6, outfit: 6, eyes: 6, hat: 2 } },
 ];
 
-const wrap = (v: number, n: number) => ((Math.round(v) % n) + n) % n;
+/** Any value (even junk from the network) onto 0..n-1. */
+const wrap = (v: unknown, n: number) => {
+  const i = Math.round(Number(v));
+  return Number.isFinite(i) ? ((i % n) + n) % n : 0;
+};
 
 export function resolveStyle(s: Partial<Style> = {}): Style {
   return {
