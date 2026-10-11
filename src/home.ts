@@ -89,12 +89,14 @@ export class Home {
     const music = $('setMusic') as HTMLInputElement;
     const volume = $('setVolume') as HTMLInputElement;
     const sens = $('setSens') as HTMLInputElement;
+    const padSens = $('setPadSens') as HTMLInputElement;
     const invert = $('setInvert') as HTMLInputElement;
     const lowGfx = $('setLowGfx') as HTMLInputElement;
     lowGfx.addEventListener('change', () => game.updateSettings({ lowGraphics: lowGfx.checked }));
     music.addEventListener('change', () => game.updateSettings({ music: music.checked }));
     volume.addEventListener('input', () => game.updateSettings({ volume: Number(volume.value) / 100 }));
     sens.addEventListener('input', () => game.updateSettings({ sensitivity: Number(sens.value) / 100 }));
+    padSens.addEventListener('input', () => game.updateSettings({ padSensitivity: Number(padSens.value) / 100 }));
     invert.addEventListener('change', () => game.updateSettings({ invertY: invert.checked }));
     this.refresh();
     this.pollStats();
@@ -217,6 +219,7 @@ export class Home {
     ($('setMusic') as HTMLInputElement).checked = s.music;
     ($('setVolume') as HTMLInputElement).value = String(Math.round(s.volume * 100));
     ($('setSens') as HTMLInputElement).value = String(Math.round(s.sensitivity * 100));
+    ($('setPadSens') as HTMLInputElement).value = String(Math.round(s.padSensitivity * 100));
     ($('setInvert') as HTMLInputElement).checked = s.invertY;
     ($('setLowGfx') as HTMLInputElement).checked = s.lowGraphics;
   }

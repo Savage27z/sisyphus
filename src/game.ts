@@ -491,6 +491,7 @@ export class Game {
     this.sfx.setVolume(s.volume);
     this.sfx.musicOn = s.music;
     this.cam.sensitivity = s.sensitivity;
+    this.cam.padSensitivity = s.padSensitivity;
     this.cam.invertY = s.invertY;
     this.applyGraphics(s.lowGraphics);
   }

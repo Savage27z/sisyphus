@@ -90,10 +90,14 @@ export class PlayerController {
     const key = (...codes: string[]) => codes.some((k) => input.down(k));
     let f = (key('KeyW', 'ArrowUp') ? 1 : 0) - (key('KeyS', 'ArrowDown') ? 1 : 0);
     let r = (key('KeyD', 'ArrowRight') ? 1 : 0) - (key('KeyA', 'ArrowLeft') ? 1 : 0);
-    // The stick is analog: tilt it a little to walk slowly.
-    if (usePad && (pad.lx || pad.ly)) {
-      f = -pad.ly;
-      r = pad.lx;
+    // The stick is analog: tilt it a little to walk slowly. Pushed (nearly) all the way counts as
+    // full and sprints, like the touch stick.
+    const padTilt = usePad ? Math.hypot(pad.lx, pad.ly) : 0;
+    const padFull = padTilt > 0.88;
+    if (padTilt > 0) {
+      const k = padFull ? 1 / padTilt : 1;
+      f = -pad.ly * k;
+      r = pad.lx * k;
     }
     if (touch.enabled && (touch.moveX || touch.moveY)) {
       f = -touch.moveY;
@@ -103,7 +107,7 @@ export class PlayerController {
     const co = Math.cos(cam.yaw);
     c.input.moveX = s * f - co * r;
     c.input.moveZ = co * f + s * r;
-    c.input.sprint = key('ShiftLeft', 'ShiftRight') || (usePad && (pad.down(BTN.LB) || this.sprintLatch)) || touch.sprint;
+    c.input.sprint = key('ShiftLeft', 'ShiftRight') || (usePad && (pad.down(BTN.LB) || this.sprintLatch || padFull)) || touch.sprint;
     c.yaw = cam.yaw;
     this.jumpBuffer = Math.max(0, this.jumpBuffer - dt);
     c.input.jump = this.jumpBuffer > 0;

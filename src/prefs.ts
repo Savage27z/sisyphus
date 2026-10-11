@@ -5,8 +5,10 @@ export interface Settings {
   music: boolean;
   /** 0..1 */
   volume: number;
-  /** Multiplier on mouse look speed. */
+  /** Multiplier on mouse (and touch swipe) look speed. */
   sensitivity: number;
+  /** Multiplier on controller right-stick look speed. */
+  padSensitivity: number;
   invertY: boolean;
   /** No shadows, lower resolution, fewer detailed fighters (on by default on phones). */
   lowGraphics: boolean;
@@ -44,7 +46,7 @@ function save(key: string, value: unknown): void {
 }
 
 export function loadSettings(): Settings {
-  return load<Settings>(SETTINGS_KEY, { music: true, volume: 0.8, sensitivity: 1, invertY: false, lowGraphics: isTouchDevice });
+  return load<Settings>(SETTINGS_KEY, { music: true, volume: 0.8, sensitivity: 1, padSensitivity: 1, invertY: false, lowGraphics: isTouchDevice });
 }
 
 export function saveSettings(s: Settings): void {
