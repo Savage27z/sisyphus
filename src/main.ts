@@ -20,17 +20,17 @@ async function boot(): Promise<void> {
   renderer.setSize(window.innerWidth, window.innerHeight);
 
   const profile = loadProfile();
-  // The first screen only needs three base characters: yours, one of the boys and one of the
-  // girls for the bots. The other four download in the background once the menu is up.
+  // The first screen needs only two base characters: yours, and one of the other kind (boy or
+  // girl) for the bots. Every base is over a megabyte, so the other five download in the
+  // background once the menu is up.
   const mine = profile.style.base;
-  const boy = MALE_BASES.includes(mine) ? MALE_BASES.find((b) => b !== mine)! : MALE_BASES[Math.floor(Math.random() * MALE_BASES.length)];
-  const girls = BASES.map((_, i) => i).filter((i) => !MALE_BASES.includes(i) && i !== mine);
-  const girl = girls[Math.floor(Math.random() * girls.length)];
-  const bootBases = [mine, boy, girl];
+  const others = BASES.map((_, i) => i).filter((i) => MALE_BASES.includes(i) !== MALE_BASES.includes(mine));
+  const other = others[Math.floor(Math.random() * others.length)];
+  const bootBases = [mine, other];
   const [assets] = await Promise.all([loadAssets(bootBases, (f) => progress(f * 0.8)), RAPIER.init()]);
   progress(0.85);
   const styles = [profile.style];
-  const order = [boy, girl, mine, girl, boy];
+  const order = [other, mine, other, mine, other];
   for (let i = 0; i < CONFIG.BOT_COUNT; i++) {
     const s = randomStyle();
     s.base = order[i % order.length];
