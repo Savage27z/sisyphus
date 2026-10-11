@@ -534,7 +534,7 @@ button:active {
   line-height: 1.8;
 }
 
-/* ---------- Home page ---------- */
+/* ---------- Home page: a game lobby ---------- */
 .home {
   position: fixed;
   inset: 0;
@@ -545,26 +545,445 @@ button:active {
   inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(ellipse at 28% 45%, rgba(12, 10, 32, 0) 0%, rgba(12, 10, 32, 0.3) 55%, rgba(12, 10, 32, 0.7) 100%),
-    linear-gradient(to bottom, rgba(12, 10, 32, 0.35), rgba(12, 10, 32, 0) 30%, rgba(12, 10, 32, 0.45));
+    linear-gradient(to right, rgba(12, 10, 32, 0.55), rgba(12, 10, 32, 0) 34%),
+    linear-gradient(to bottom, rgba(12, 10, 32, 0.5), rgba(12, 10, 32, 0) 26%, rgba(12, 10, 32, 0) 62%, rgba(12, 10, 32, 0.6));
 }
 .homeInner {
   position: relative;
   min-height: 100%;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 28px;
-  padding: 40px clamp(16px, 5vw, 80px);
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    'top top top'
+    'menu . play'
+    'foot . play';
+  gap: 18px 28px;
+  padding: clamp(14px, 2.6vw, 34px) clamp(16px, 3.6vw, 52px);
 }
-.brand {
-  flex: 1 1 360px;
+
+/* Top bar: logo lockup and the player chip. */
+.homeTop {
+  grid-area: top;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.lockup {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.lockup .emblem {
+  width: clamp(64px, 7vw, 104px);
+  margin: 0 -6px 0 0;
+}
+.lockupText {
+  min-width: 0;
+}
+.lockup .logoText {
+  font-size: clamp(40px, 5.6vw, 86px);
+  transform: rotate(-2deg);
+  transform-origin: 0 60%;
+}
+.lockup .logoText .extrude {
+  -webkit-text-stroke: 11px #2c2633;
+}
+.tagline {
+  position: relative;
+  z-index: 3;
+  margin: 6px 0 0 4px;
+  color: #fff7ea;
+  font-family: 'Rubik', sans-serif;
+  font-size: clamp(14px, 1.5vw, 19px);
+  font-weight: 900;
+  -webkit-text-stroke: 4px #2c2633;
+  paint-order: stroke fill;
+  text-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+}
+.playerChip {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0 0;
+  padding: 5px 18px 5px 5px;
+  border-radius: 999px;
+  background: rgba(255, 247, 234, 0.96);
+  box-shadow: 0 4px 0 #2c2633;
+  color: #2c2633;
+  text-align: left;
+}
+.chipAvatar {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 3px solid #2c2633;
+  border-radius: 50%;
+  background: var(--chip, #ff6f91);
+  color: #fff;
+  font-family: 'Titan One', 'Rubik', sans-serif;
+  font-size: 21px;
+  -webkit-text-stroke: 4px #2c2633;
+  paint-order: stroke fill;
+}
+.chipText {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+.chipText b {
+  max-width: 150px;
+  overflow: hidden;
+  font: 900 17px 'Rubik', sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chipText small {
+  font: 800 10px 'Rubik', sans-serif;
+  letter-spacing: 1px;
+  opacity: 0.55;
+}
+
+/* Left menu: chunky cream buttons, each with its own coloured icon. */
+.homeMenu {
+  grid-area: menu;
+  align-self: center;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+.menuBtn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 230px;
+  margin: 0;
+  padding: 6px 20px 6px 6px;
+  border-radius: 16px;
+  background: rgba(255, 247, 234, 0.95);
+  font-size: 17px;
+  text-align: left;
+  transition: transform 0.12s ease-out;
+}
+.menuBtn:hover {
+  transform: translateX(6px);
+}
+.mIcon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border: 3px solid #2c2633;
+  border-radius: 11px;
+  background: #ffe14d;
+}
+.mIcon svg,
+.modeIcon svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: #2c2633;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.mIcon .dot {
+  fill: #2c2633;
+}
+#leaderBtn .mIcon {
+  background: #ff9f1c;
+}
+#winsBtn .mIcon {
+  background: #ff6f91;
+}
+#recordsBtn .mIcon {
+  background: #4fe0c8;
+}
+#settingsBtn .mIcon {
+  background: #b08cff;
+}
+
+/* Bottom right: PLAY, the prize sticker, who's around, the other two modes. */
+.homePlay {
+  grid-area: play;
+  align-self: end;
+  justify-self: end;
+  width: min(440px, 100%);
+}
+.goWrap {
+  position: relative;
+  padding-top: 18px;
+}
+.bigPlay.homeGo {
   display: flex;
   flex-direction: column;
   align-items: center;
-  text-align: center;
+  padding: 16px 20px 14px;
+  border: 4px solid #2c2633;
+  border-radius: 24px;
+  background: linear-gradient(to bottom, #fff07a 0%, #ffd23f 45%, #ff9f1c 100%);
+  box-shadow:
+    0 9px 0 #2c2633,
+    inset 0 -7px 0 rgba(176, 72, 8, 0.32),
+    inset 0 4px 0 rgba(255, 255, 255, 0.55);
+  transform: rotate(-2deg);
+  -webkit-text-stroke: 0;
+  animation: goBreathe 2.6s ease-in-out infinite;
 }
+.bigPlay.homeGo:active {
+  transform: rotate(-2deg) translateY(5px);
+  box-shadow:
+    0 4px 0 #2c2633,
+    inset 0 -7px 0 rgba(176, 72, 8, 0.32);
+}
+@keyframes goBreathe {
+  50% {
+    filter: brightness(1.08);
+    transform: rotate(-2deg) scale(1.015);
+  }
+}
+.goMain {
+  color: #fff;
+  font-family: 'Titan One', 'Rubik', sans-serif;
+  font-size: clamp(54px, 5.6vw, 78px);
+  line-height: 1;
+  letter-spacing: 8px;
+  -webkit-text-stroke: 9px #2c2633;
+  paint-order: stroke fill;
+  text-shadow: 0 6px 0 #2c2633;
+}
+.goSub {
+  margin-top: 8px;
+  color: #6b2a06;
+  font: 900 12px 'Rubik', sans-serif;
+  letter-spacing: 2px;
+}
+.prizeBurst {
+  position: absolute;
+  top: -10px;
+  right: -14px;
+  z-index: 2;
+  width: 108px;
+  height: 108px;
+  pointer-events: none;
+  animation: burstWobble 3s ease-in-out infinite;
+}
+.prizeBurst svg {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  filter: drop-shadow(0 5px 0 #2c2633);
+}
+.prizeBurst polygon {
+  fill: #ff4d5e;
+  stroke: #2c2633;
+  stroke-width: 4;
+  stroke-linejoin: round;
+}
+.burstText {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-family: 'Titan One', 'Rubik', sans-serif;
+  line-height: 0.95;
+  -webkit-text-stroke: 5px #2c2633;
+  paint-order: stroke fill;
+}
+.burstText small {
+  font-size: 15px;
+  letter-spacing: 1px;
+}
+.burstText b {
+  font-size: 30px;
+  font-weight: 400;
+}
+@keyframes burstWobble {
+  0%,
+  100% {
+    transform: rotate(10deg);
+  }
+  50% {
+    transform: rotate(16deg) scale(1.05);
+  }
+}
+.liveLine {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 18px auto 0;
+  padding: 7px 16px;
+  border-radius: 999px;
+  background: rgba(20, 16, 40, 0.66);
+  color: #fff7ea;
+  font: 800 14px 'Rubik', sans-serif;
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+.liveLine span {
+  white-space: nowrap;
+}
+#homeRound:not(:empty)::before {
+  content: '·';
+  margin-right: 8px;
+  opacity: 0.6;
+}
+.liveDot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #8be86a;
+  animation: livePing 1.6s ease-out infinite;
+}
+.liveLine.offline .liveDot {
+  background: #9aa0ad;
+  animation: none;
+}
+@keyframes livePing {
+  0% {
+    box-shadow: 0 0 0 0 rgba(139, 232, 106, 0.7);
+  }
+  100% {
+    box-shadow: 0 0 0 9px rgba(139, 232, 106, 0);
+  }
+}
+.modeRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 14px;
+}
+.modeBtn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 9px 12px;
+  border-radius: 16px;
+  background: rgba(44, 38, 51, 0.86);
+  color: #fff7ea;
+  text-align: left;
+}
+.modeIcon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border: 3px solid #2c2633;
+  border-radius: 12px;
+  background: #7fd4ff;
+}
+.modeIcon.practice {
+  background: #8be86a;
+}
+.modeText {
+  min-width: 0;
+}
+.modeText b {
+  display: block;
+  font-size: 18px;
+  font-weight: 400;
+}
+.modeText small {
+  display: block;
+  overflow: hidden;
+  font: 700 11px 'Rubik', sans-serif;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.72;
+}
+.homeFoot {
+  grid-area: foot;
+  align-self: end;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  font-size: 13px;
+}
+.homeFoot a {
+  color: #7fd4ff;
+  font-weight: 700;
+}
+.homeFoot .ver {
+  opacity: 0.55;
+}
+
+/* Upright phones and narrow windows: one column, PLAY first. */
+@media (max-width: 860px) {
+  .homeInner {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+    grid-template-areas:
+      'top'
+      'play'
+      'menu'
+      'foot';
+    align-content: start;
+    gap: 22px;
+  }
+  .homeTop {
+    flex-direction: column;
+    align-items: center;
+  }
+  .lockup {
+    flex-direction: column;
+  }
+  .lockup .emblem {
+    margin: 0 0 -12px;
+  }
+  .lockupText {
+    text-align: center;
+  }
+  .tagline {
+    margin-left: 0;
+  }
+  .homePlay {
+    justify-self: center;
+  }
+  .homeMenu {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: min(440px, 100%);
+    justify-self: center;
+  }
+  .menuBtn {
+    min-width: 0;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  .menuBtn:hover {
+    transform: none;
+  }
+  .homeFoot {
+    justify-self: center;
+  }
+}
+@media (max-width: 520px) {
+  .liveLine {
+    flex-direction: column;
+    border-radius: 16px;
+  }
+  #homeRound:not(:empty)::before {
+    display: none;
+  }
+}
+
 .logo {
   display: flex;
   flex-direction: column;
@@ -615,58 +1034,6 @@ button:active {
   -webkit-text-fill-color: transparent;
   -webkit-text-stroke: 3px #8a2f0a;
 }
-.tagline {
-  margin: 18px 0 4px;
-  color: #fff;
-  font-family: 'Rubik', sans-serif;
-  font-size: clamp(18px, 2.2vw, 28px);
-  font-weight: 900;
-  -webkit-text-stroke: 5px #2c2633;
-  paint-order: stroke fill;
-  text-shadow: 0 4px 0 rgba(0, 0, 0, 0.35);
-}
-.subtag {
-  max-width: 520px;
-  color: #e9ecf8;
-  font-size: clamp(14px, 1.4vw, 17px);
-  font-weight: 700;
-  -webkit-text-stroke: 3px #2c2633;
-  paint-order: stroke fill;
-}
-.playCard {
-  flex: 0 0 auto;
-  width: min(430px, 100%);
-  padding: 22px 24px 16px;
-  border: 3px solid #2c2633;
-  border-radius: 24px;
-  background: linear-gradient(160deg, rgba(48, 38, 98, 0.9), rgba(20, 20, 46, 0.92));
-  box-shadow:
-    0 10px 0 rgba(0, 0, 0, 0.3),
-    inset 0 0 0 2px rgba(255, 255, 255, 0.07);
-  backdrop-filter: blur(4px);
-}
-.playingAs {
-  font-size: 16px;
-  font-weight: 700;
-}
-#homeName {
-  color: #ffe14d;
-}
-#notYou {
-  margin-left: 6px;
-  color: #7fd4ff;
-  font-size: 14px;
-}
-.headline {
-  margin: 12px 0 14px;
-  color: #ffe14d;
-  font-family: 'Titan One', 'Rubik', sans-serif;
-  font-size: clamp(24px, 3vw, 32px);
-  letter-spacing: 1px;
-  text-align: center;
-  -webkit-text-stroke: 4px #2c2633;
-  paint-order: stroke fill;
-}
 .bigPlay {
   display: block;
   width: 100%;
@@ -690,18 +1057,6 @@ button:active {
     filter: brightness(1.12);
   }
 }
-.homeStats {
-  margin: 14px 2px 12px;
-  font-size: 15px;
-  font-weight: 700;
-  line-height: 1.6;
-  opacity: 0.92;
-}
-.homeGrid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
 .gridBtn {
   margin: 0;
   padding: 12px 6px;
@@ -715,31 +1070,6 @@ button:active {
 .gridBtn:active {
   box-shadow: 0 1px 0 #2c2633;
 }
-.homeFoot {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 14px;
-  font-size: 13px;
-}
-.homeFoot a {
-  color: #7fd4ff;
-  font-weight: 700;
-}
-.homeFoot .ver {
-  opacity: 0.55;
-}
-@media (max-width: 860px) {
-  .homeInner {
-    flex-direction: column;
-    justify-content: flex-start;
-    padding-top: 28px;
-  }
-  .brand {
-    flex: none;
-  }
-}
-
 /* ---------- Home sheets (how to play, records, settings, credits) ---------- */
 .sheet {
   position: relative;
@@ -971,29 +1301,6 @@ button:active {
 }
 
 /* ---------- Prize rounds ---------- */
-.prizeLine {
-  font-size: clamp(26px, 3.4vw, 36px);
-}
-.prizeLine span {
-  color: #8be86a;
-}
-.homeGrid {
-  grid-template-columns: 1fr 1fr 1fr;
-}
-.homeGrid .gridBtn {
-  font-size: 13px;
-  letter-spacing: 0.5px;
-}
-.homeLinks {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 14px;
-  font-size: 14px;
-  font-weight: 700;
-}
-.homeLinks a {
-  color: #7fd4ff;
-}
 .arenaSheet {
   text-align: center;
 }
@@ -1077,11 +1384,6 @@ button:active {
 }
 #prizeBadge.hidden {
   display: none;
-}
-@media (max-width: 520px) {
-  .homeGrid {
-    grid-template-columns: 1fr 1fr;
-  }
 }
 
 /* ---------- Loading screen: logo + bar, nothing else ---------- */
@@ -1512,73 +1814,154 @@ body.touch .feedItem:nth-child(n + 4) {
   display: none;
 }
 
-/* Phones held sideways (short screens): logo and play card side by side, everything tighter. */
+/* Phones held sideways (short screens): the same lobby, tighter. */
 @media (max-height: 520px) and (orientation: landscape) {
   .homeInner {
+    grid-template-columns: auto 1fr auto;
+    grid-template-areas:
+      'top top top'
+      'menu . play'
+      'foot . play';
+    grid-template-rows: auto 1fr auto;
+    align-content: stretch;
+    gap: 8px 14px;
+    padding: 8px calc(12px + env(safe-area-inset-right)) 8px calc(12px + env(safe-area-inset-left));
+  }
+  /* Undo the one-column layout that narrow (under 860px) sideways phones also match. */
+  .homeTop {
     flex-direction: row;
-    flex-wrap: nowrap;
     align-items: center;
-    gap: 14px;
-    padding: 10px calc(14px + env(safe-area-inset-right)) 10px calc(14px + env(safe-area-inset-left));
   }
-  .brand {
-    flex: 1 1 0;
-    min-width: 0;
+  .lockup {
+    flex-direction: row;
   }
-  .emblem {
-    width: 58px;
-    margin-bottom: -8px;
-  }
-  .logoText {
-    font-size: clamp(34px, 6.4vw, 60px);
-  }
-  .logoText .extrude {
-    -webkit-text-stroke: 9px #2c2633;
+  .lockupText {
+    text-align: left;
   }
   .tagline {
-    margin-top: 8px;
-    font-size: 15px;
-    -webkit-text-stroke: 4px #2c2633;
+    margin-left: 4px;
   }
-  .subtag {
+  .homeMenu {
+    display: flex;
+    width: auto;
+    justify-self: start;
+  }
+  .homePlay {
+    justify-self: end;
+  }
+  .homeFoot {
+    justify-self: start;
+  }
+  .lockup .emblem {
+    width: 46px;
+    margin: 0 -4px 0 0;
+  }
+  .lockup .logoText {
+    font-size: clamp(28px, 5vw, 44px);
+  }
+  .lockup .logoText .extrude {
+    -webkit-text-stroke: 8px #2c2633;
+  }
+  .tagline {
+    margin-top: 7px;
     font-size: 11px;
+    -webkit-text-stroke: 3px #2c2633;
   }
-  .playCard {
-    width: min(360px, 50vw);
-    padding: 10px 14px 8px;
+  .playerChip {
+    padding: 3px 12px 3px 3px;
+  }
+  .chipAvatar {
+    width: 32px;
+    height: 32px;
+    font-size: 16px;
+  }
+  .chipText b {
+    font-size: 14px;
+  }
+  .homeMenu {
+    gap: 6px;
+  }
+  .menuBtn {
+    min-width: 0;
+    gap: 8px;
+    padding: 3px 12px 3px 3px;
+    border-radius: 12px;
+    font-size: 12px;
+  }
+  .mIcon {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+  }
+  .mIcon svg {
+    width: 16px;
+    height: 16px;
+  }
+  .homePlay {
+    width: min(330px, 48vw);
+  }
+  .goWrap {
+    padding-top: 10px;
+  }
+  .bigPlay.homeGo {
+    padding: 8px 12px;
     border-radius: 18px;
   }
-  .playingAs {
-    font-size: 13px;
+  .goMain {
+    font-size: 40px;
+    letter-spacing: 5px;
+    -webkit-text-stroke: 7px #2c2633;
   }
-  .headline {
-    margin: 4px 0 6px;
+  .goSub {
+    margin-top: 4px;
+    font-size: 9px;
+  }
+  .prizeBurst {
+    top: -8px;
+    right: -10px;
+    width: 72px;
+    height: 72px;
+  }
+  .burstText small {
+    font-size: 10px;
+  }
+  .burstText b {
     font-size: 20px;
+  }
+  .liveLine {
+    margin-top: 10px;
+    padding: 4px 12px;
+    font-size: 11px;
+  }
+  .modeRow {
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .modeBtn {
+    gap: 7px;
+    padding: 5px 8px;
+  }
+  .modeIcon {
+    width: 30px;
+    height: 30px;
+  }
+  .modeIcon svg {
+    width: 17px;
+    height: 17px;
+  }
+  .modeText b {
+    font-size: 14px;
+  }
+  .modeText small {
+    font-size: 9px;
+  }
+  .homeFoot {
+    font-size: 11px;
   }
   .bigPlay {
     padding: 9px;
     font-size: 24px;
     letter-spacing: 4px;
-  }
-  .homeStats {
-    margin: 6px 2px;
-    font-size: 12px;
-    line-height: 1.4;
-  }
-  .homeGrid {
-    gap: 6px;
-  }
-  .homeGrid .gridBtn {
-    padding: 7px 4px;
-    font-size: 11px;
-  }
-  .homeLinks {
-    margin-top: 8px;
-    font-size: 12px;
-  }
-  .homeFoot {
-    margin-top: 6px;
-    font-size: 11px;
   }
   .sheet {
     max-height: calc(100vh - 20px);

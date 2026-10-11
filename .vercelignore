@@ -1,0 +1,9 @@
+node_modules
+dist
+data
+data-test
+assets-src
+videos
+branding
+.claude
+*.log

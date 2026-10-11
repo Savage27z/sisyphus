@@ -7,3 +7,7 @@ data-test
 assets-src
 # Local editor/tool settings
 .claude
+# Marketing videos (big binary files)
+videos
+
+.vercel

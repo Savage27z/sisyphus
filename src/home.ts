@@ -7,6 +7,8 @@ const $ = (id: string) => document.getElementById(id)!;
 const SHEETS = ['howto', 'records', 'settings', 'credits', 'leaderboard', 'mywins', 'practice'];
 const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+/** Player chip colours, picked by outfit so the chip changes with the locker. */
+const CHIP_COLORS = ['#ff6f91', '#3ec1ff', '#ffc23d', '#6fdc8c', '#b08cff', '#ff8a3d', '#4fe0c8', '#8fa8ff'];
 
 interface ArenaStat {
   phase: 'lobby' | 'playing' | 'ended';
@@ -24,7 +26,7 @@ interface PublicStats {
   arenas: ArenaStat[];
 }
 
-/** The home page: prize pool, PLAY ONLINE, live player count and round clock, sheets. */
+/** The home page: player chip, menu, PLAY with the prize, live player count and round clock, sheets. */
 export class Home {
   private readonly el = $('menu');
   private statsTimer: number | null = null;
@@ -53,7 +55,6 @@ export class Home {
       game.openLocker();
     };
     $('lockerBtn').addEventListener('click', toLocker);
-    $('notYou').addEventListener('click', toLocker);
     $('howtoBtn').addEventListener('click', () => this.openSheet('howto'));
     $('leaderBtn').addEventListener('click', () => {
       this.openSheet('leaderboard');
@@ -117,7 +118,11 @@ export class Home {
   }
 
   refresh(): void {
-    $('homeName').textContent = this.game.profile.name;
+    const { name, style } = this.game.profile;
+    $('homeName').textContent = name;
+    const avatar = $('chipAvatar');
+    avatar.textContent = (name.trim()[0] ?? '?').toUpperCase();
+    avatar.style.setProperty('--chip', CHIP_COLORS[style.outfit % CHIP_COLORS.length]);
   }
 
   // ------------------------------------------------------------------ live stats
@@ -142,18 +147,19 @@ export class Home {
 
   private renderStats(): void {
     const s = this.lastStats;
+    $('liveLine').classList.toggle('offline', !s);
     if (!s) {
       $('homePrize').textContent = '$25';
-      $('homeOnline').textContent = 'Online play is unavailable right now';
-      $('homeRound').textContent = 'Practice offline below';
+      $('homeOnline').textContent = "Can't reach the server";
+      $('homeRound').textContent = 'Practice still works';
       return;
     }
     $('homePrize').textContent = `${s.currency}${s.prize}`;
-    $('homeOnline').textContent = `${s.online} player${s.online === 1 ? '' : 's'} online`;
+    $('homeOnline').textContent = `${s.online} here now`;
     const elapsed = (performance.now() - this.statsAt) / 1000;
     const a = [...s.arenas].sort((x, y) => y.humans - x.humans)[0];
     let line: string;
-    if (!a) line = `Start a round — prize rounds need ${s.minPlayers} players`;
+    if (!a) line = `Prize rounds at ${s.minPlayers}+ players`;
     else if (a.phase === 'playing' && a.endsIn !== null) line = `Round ends in ${clock(Math.max(0, a.endsIn - elapsed))}`;
     else if (a.phase === 'lobby' && a.startsIn !== null) line = `Next round in ${clock(Math.max(0, a.startsIn - elapsed))}`;
     else line = 'Next round starting soon';
