@@ -24,6 +24,8 @@ export interface RoomInfo {
   matchSeconds: number;
   prize: number;
   currency: string;
+  /** How the pot is shared between the top places, in percent (e.g. [60, 25, 15]). */
+  split: number[];
   minPlayers: number;
   /** Enough real players for the prize to be on. */
   prizeRound: boolean;

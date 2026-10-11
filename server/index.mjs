@@ -12,8 +12,14 @@
 // (batched, 20 Hz), and refuses movement no honest client could produce (guard.mjs).
 //
 //   node server/index.mjs        PORT (8787), DATA_DIR (./data)
-//   Prize display:               PRIZE_PER_ROUND (25), PRIZE_CURRENCY ($), MIN_PRIZE_PLAYERS (4)
+//   Prize defaults:              PRIZE_PER_ROUND (25), PRIZE_CURRENCY ($), MIN_PRIZE_PLAYERS (4); after the
+//                                first prize round they live in DATA_DIR/prizes.json and change from Telegram
+//   Telegram bot:                TELEGRAM_BOT_TOKEN, TELEGRAM_ADMIN_IDS (see telegram.mjs)
 //   Arenas:                      ARENA_FILL (12 fighters with bots), INTERMISSION_SECONDS (30), MATCH_SECONDS (480)
+//
+// Prize rounds pay the top places (the split, e.g. 60/25/15): the winner, then the real players
+// who finished highest. Each placed player gets a private link to send a Solana wallet address,
+// which arrives in the Telegram bot; the payment itself is sent by hand.
 
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -23,7 +29,9 @@ import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { Guard, STRIKES_TO_FLAG } from './guard.mjs';
+import { ORDINAL, Prizes, money } from './prizes.mjs';
 import { Stats } from './stats.mjs';
+import { TelegramBot, esc } from './telegram.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const env = process.env;
@@ -31,9 +39,6 @@ const CFG = {
   port: Number(env.PORT) || 8787,
   dist: path.join(ROOT, 'dist'),
   dataDir: env.DATA_DIR || path.join(ROOT, 'data'),
-  prize: Number(env.PRIZE_PER_ROUND ?? 25),
-  currency: env.PRIZE_CURRENCY ?? '$',
-  minPrizePlayers: Number(env.MIN_PRIZE_PLAYERS ?? 4),
   arenaFill: Number(env.ARENA_FILL ?? 12),
   intermission: Number(env.INTERMISSION_SECONDS ?? 30),
 };
@@ -64,6 +69,16 @@ const now = () => Number(process.hrtime.bigint() / 1000000n);
 const rooms = new Map(); // private rooms by code
 const arenas = []; // public arenas
 const stats = new Stats(CFG.dataDir);
+const prizes = new Prizes(CFG.dataDir, {
+  amount: Number(env.PRIZE_PER_ROUND ?? 25),
+  currency: env.PRIZE_CURRENCY ?? '$',
+  split: [60, 25, 15],
+  minPlayers: Number(env.MIN_PRIZE_PLAYERS ?? 4),
+});
+/** Current prize settings (the pot, currency, split, minimum real players). */
+const P = () => prizes.settings;
+const MAP_NAMES = { olympus: 'Mount Olympus', tower: 'The Tower', construction: 'Construction Site', hotel: 'Haunted Hotel' };
+const MEDAL = ['🥇', '🥈', '🥉'];
 let nextClient = 1;
 let nextArena = 1;
 
@@ -125,9 +140,10 @@ function publicStats() {
   return {
     online: wss.clients.size,
     playing: arenas.reduce((n, a) => n + a.clients.size, 0),
-    prize: CFG.prize,
-    currency: CFG.currency,
-    minPlayers: CFG.minPrizePlayers,
+    prize: P().amount,
+    currency: P().currency,
+    split: P().split,
+    minPlayers: P().minPlayers,
     matchSeconds: MATCH_SECONDS,
     arenas: arenas.map((a) => ({
       code: a.code,
@@ -150,6 +166,7 @@ const server = http.createServer((req, res) => {
   }
   if (url.pathname === '/api/stats') return json(res, publicStats());
   if (url.pathname === '/api/leaderboard') return json(res, { top: stats.leaderboard(50) });
+  if (url.pathname === '/api/claim') return handleClaim(req, res);
   let rel;
   try {
     rel = decodeURIComponent(url.pathname);
@@ -170,6 +187,62 @@ const server = http.createServer((req, res) => {
   }
   sendFile(req, res, file);
 });
+
+// ------------------------------------------------------------------ prize claims
+
+const CLAIM_CORS = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'POST, OPTIONS', 'access-control-allow-headers': 'content-type' };
+const claimHits = new Map(); // ip -> { n, at }
+
+/** POST /api/claim { token, wallet }: a placed player sends the Solana address for their prize. */
+function handleClaim(req, res) {
+  const reply = (status, body) => {
+    res.writeHead(status, { ...CLAIM_CORS, 'content-type': 'application/json', 'cache-control': 'no-store' });
+    res.end(JSON.stringify(body));
+  };
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, CLAIM_CORS);
+    return res.end();
+  }
+  if (req.method !== 'POST') return reply(405, { error: 'POST only.' });
+  const ip = String(req.headers['x-forwarded-for'] ?? req.socket.remoteAddress ?? '').split(',')[0].trim();
+  const t = now();
+  const hit = claimHits.get(ip);
+  if (!hit || t - hit.at > 60000) claimHits.set(ip, { n: 1, at: t });
+  else if (++hit.n > 12) return reply(429, { error: 'Too many tries. Wait a minute and try again.' });
+  if (claimHits.size > 5000) claimHits.clear();
+
+  let body = '';
+  req.setEncoding('utf8');
+  req.on('data', (chunk) => {
+    body += chunk;
+    if (body.length > 2048) req.destroy();
+  });
+  req.on('end', () => {
+    let msg;
+    try {
+      msg = JSON.parse(body);
+    } catch {
+      return reply(400, { error: 'Bad request.' });
+    }
+    const r = prizes.submit(String(msg?.token ?? ''), String(msg?.wallet ?? '').trim());
+    if (r.error) return reply(400, { error: r.error });
+    const c = r.claim;
+    if (!r.same) telegram.notify(walletMessage(c, r.updated));
+    reply(200, { ok: true, place: c.place, label: money(c.amount, c.currency), wallet: c.wallet });
+  });
+}
+
+function walletMessage(c, updated) {
+  const when = new Date(c.at).toISOString().replace('T', ' ').slice(0, 16);
+  return [
+    updated ? `✏️ <b>Wallet changed</b> · claim #${c.id}` : `💰 <b>Wallet in</b> · claim #${c.id}`,
+    `${MEDAL[c.place - 1] ?? ''} ${ORDINAL[c.place - 1] ?? c.place} place: <b>${esc(c.name)}</b>`,
+    `Prize: <b>${esc(money(c.amount, c.currency))}</b> (${c.share}% of the pot)`,
+    `Wallet: <code>${esc(c.wallet)}</code>`,
+    `<a href="https://solscan.io/account/${esc(c.wallet)}">View on Solscan</a>`,
+    `Round ${esc(c.arena)} · ${esc(MAP_NAMES[c.map] ?? c.map)} · ${when} UTC`,
+  ].join('\n');
+}
 
 // ------------------------------------------------------------------ rooms
 
@@ -225,10 +298,16 @@ function broadcast(room, msg, except) {
  */
 function prizeRound(room) {
   if (room.phase !== 'lobby') return room.prizeLocked;
-  return room.public && CFG.prize > 0 && room.clients.size >= CFG.minPrizePlayers;
+  return room.public && P().amount > 0 && room.clients.size >= P().minPlayers;
+}
+
+/** The pot a round is playing for: fixed when it starts, so changing it mid-round waits for the next. */
+function potOf(room) {
+  return room.phase !== 'lobby' && room.pot ? room.pot : P();
 }
 
 function roomInfo(room) {
+  const pot = potOf(room);
   return {
     t: 'room',
     code: room.code,
@@ -240,9 +319,10 @@ function roomInfo(room) {
     nextAt: room.phase === 'lobby' ? room.nextAt : 0,
     at: room.at,
     matchSeconds: MATCH_SECONDS,
-    prize: CFG.prize,
-    currency: CFG.currency,
-    minPlayers: CFG.minPrizePlayers,
+    prize: pot.amount,
+    currency: pot.currency,
+    split: pot.split,
+    minPlayers: P().minPlayers,
     prizeRound: prizeRound(room),
     players: [...room.clients.values()].map((c) => ({ id: c.id, name: c.name, style: c.style })),
   };
@@ -285,7 +365,8 @@ function startMatch(room) {
   for (let i = roster.length; i < Math.min(MAX_FIGHTERS, fill); i++) {
     roster.push({ netId: `b:${i}`, kind: 'bot', owner: room.botOwner, seed: Math.floor(Math.random() * 2 ** 31), spawn: room.nextSpawn++ });
   }
-  room.prizeLocked = room.public && CFG.prize > 0 && roster.filter((e) => e.kind === 'human').length >= CFG.minPrizePlayers;
+  room.prizeLocked = room.public && P().amount > 0 && roster.filter((e) => e.kind === 'human').length >= P().minPlayers;
+  room.pot = room.prizeLocked ? { amount: P().amount, currency: P().currency, split: [...P().split] } : null;
   room.phase = 'playing';
   room.at = now() + COUNTDOWN_MS;
   room.roster = roster;
@@ -351,6 +432,36 @@ function crateTick(room) {
   room.timers.push(setTimeout(() => crateTick(room), CRATE_EVERY_MS));
 }
 
+/**
+ * Finishing order for the prize: the winner first, then everyone else by how high they were at the
+ * end (closest to the flag). Real players only, still connected, never caught by the guard.
+ */
+function placements(room, who, reason) {
+  const out = [];
+  for (const e of room.roster) {
+    if (e.kind !== 'human' || !room.heights.has(e.netId)) continue;
+    const client = room.clients.get(e.owner);
+    if (!client || room.guard.flagged(client.id)) continue;
+    out.push({ netId: e.netId, client, name: client.name, pid: client.pid, y: room.heights.get(e.netId) });
+  }
+  out.sort((a, b) => Number(b.netId === who) - Number(a.netId === who) || b.y - a.y);
+  return out.map((p) => ({ ...p, reason: p.netId === who ? reason : 'height' }));
+}
+
+function roundMessage(room, claims) {
+  const pot = room.pot;
+  const lines = [
+    `🏁 <b>Prize round over</b> · ${esc(MAP_NAMES[room.map] ?? room.map)} (${esc(room.code)})`,
+    `Pot: <b>${esc(money(pot.amount, pot.currency))}</b> · split ${pot.split.join('/')}`,
+  ];
+  const why = { flag: 'held the flag', time: 'highest at the bell', height: 'closest to the top' };
+  for (const c of claims) lines.push(`${MEDAL[c.place - 1] ?? ''} ${ORDINAL[c.place - 1]} <b>${esc(c.name)}</b>: ${esc(money(c.amount, c.currency))} (${why[c.reason] ?? c.reason})`);
+  if (!claims.length) lines.push('No real player finished in a paid place (bots or flagged players only). Nothing to pay.');
+  else if (claims.length < pot.split.length) lines.push(`Only ${claims.length} paid place${claims.length === 1 ? '' : 's'} filled; the rest of the pot stays with you.`);
+  if (claims.length) lines.push('Waiting for their wallets…');
+  return lines.join('\n');
+}
+
 function endMatch(room, who, reason) {
   if (room.phase !== 'playing') return;
   clearTimers(room);
@@ -358,6 +469,7 @@ function endMatch(room, who, reason) {
   const entry = room.roster.find((e) => e.netId === who) ?? null;
   const winnerClient = entry?.kind === 'human' ? room.clients.get(entry.owner) : null;
   const flaggedClients = [...room.clients.values()].filter((c) => room.guard.flagged(c.id));
+  const pot = potOf(room);
   const result = {
     t: 'win',
     who,
@@ -365,12 +477,24 @@ function endMatch(room, who, reason) {
     winnerName: entry ? (entry.kind === 'human' ? entry.name : null) : null,
     bot: entry?.kind === 'bot',
     prizeRound: prizeRound(room),
-    prize: CFG.prize,
-    currency: CFG.currency,
+    prize: pot.amount,
+    currency: pot.currency,
     // Anyone the guard caught moving impossibly can't take a prize round.
     disqualified: !!winnerClient && room.guard.flagged(winnerClient.id),
+    places: [],
   };
+  // Prize rounds pay the top places; each placed player privately gets a link for their wallet.
+  let awards = [];
+  if (result.prizeRound && room.pot) {
+    const placed = placements(room, who, reason);
+    awards = prizes.award({ arena: room.code, map: room.map, ...room.pot }, placed).map((a, i) => ({ ...a, client: placed[i].client }));
+    result.places = awards.map(({ claim }) => ({ place: claim.place, name: claim.name, share: claim.share, label: money(claim.amount, claim.currency) }));
+  }
   broadcast(room, result);
+  for (const { claim, token, client } of awards) {
+    send(client, { t: 'prize', token, place: claim.place, share: claim.share, label: money(claim.amount, claim.currency), pot: money(room.pot.amount, room.pot.currency), map: room.map, at: claim.at });
+  }
+  if (result.prizeRound && room.pot) telegram.notify(roundMessage(room, awards.map((a) => a.claim)));
   if (room.public) {
     stats.recordRound({
       arena: room.code,
@@ -632,5 +756,93 @@ wss.on('connection', (ws) => {
   });
   ws.on('close', () => leave(client));
 });
+
+// ------------------------------------------------------------------ telegram
+
+/** Push changed prize settings to everyone waiting in a lobby (rounds in progress keep theirs). */
+function announceSettings() {
+  for (const r of [...arenas, ...rooms.values()]) sendRoom(r);
+}
+
+function settingsText() {
+  const s = P();
+  const shares = s.split.map((p, i) => `${ORDINAL[i]} ${p}% (${money((s.amount * p) / 100, s.currency)})`).join(', ');
+  return [
+    `<b>Prize pot:</b> ${esc(money(s.amount, s.currency))} per prize round`,
+    `<b>Split:</b> ${esc(shares)}`,
+    `<b>Prize rounds need:</b> ${s.minPlayers} real players`,
+  ].join('\n');
+}
+
+const HELP = [
+  '<b>SISYPHUS prize bot</b>',
+  '/pool: show the pot and split',
+  '/pool 2.5 SOL: set the pot per prize round (or /pool 0 to turn prizes off)',
+  '/split 60 25 15: how the pot is shared between the top places (1 to 3 numbers adding to 100)',
+  '/minplayers 4: real players a round needs to be a prize round',
+  '/claims: the latest winners and their wallets',
+  '/status: who is playing right now',
+].join('\n');
+
+async function onTelegramCommand(name, args) {
+  switch (name) {
+    case 'start':
+    case 'help':
+      return `${HELP}\n\n${settingsText()}`;
+    case 'pool': {
+      if (!args.length) return settingsText();
+      const amount = Number(String(args[0]).replace(/^\$/, ''));
+      if (!Number.isFinite(amount) || amount < 0 || amount > 1e9) return 'Usage: /pool 2.5 SOL (a number, then the currency)';
+      const currency = String(args[1] ?? (String(args[0]).startsWith('$') ? '$' : P().currency)).slice(0, 8);
+      prizes.update({ amount, currency });
+      announceSettings();
+      return `✅ Pot set. Rounds starting from now play for it.\n\n${settingsText()}`;
+    }
+    case 'split': {
+      const split = args.map(Number);
+      if (!split.length || split.length > 3 || split.some((p) => !Number.isFinite(p) || p <= 0) || Math.abs(split.reduce((a, b) => a + b, 0) - 100) > 0.001) {
+        return 'Usage: /split 60 25 15 (1 to 3 numbers that add up to 100)';
+      }
+      prizes.update({ split });
+      announceSettings();
+      return `✅ Split set.\n\n${settingsText()}`;
+    }
+    case 'minplayers': {
+      const n = Math.floor(Number(args[0]));
+      if (!Number.isFinite(n) || n < 1 || n > MAX_PLAYERS) return `Usage: /minplayers 4 (1 to ${MAX_PLAYERS})`;
+      prizes.update({ minPlayers: n });
+      announceSettings();
+      return `✅ Prize rounds now need ${n} real player${n === 1 ? '' : 's'}.`;
+    }
+    case 'claims': {
+      const list = prizes.recent(10);
+      if (!list.length) return 'No prize winners yet.';
+      return list
+        .map((c) => `#${c.id} ${MEDAL[c.place - 1] ?? ''} <b>${esc(c.name)}</b> ${esc(money(c.amount, c.currency))}\n${c.wallet ? `<code>${esc(c.wallet)}</code>` : '<i>waiting for wallet</i>'}`)
+        .join('\n\n');
+    }
+    case 'status': {
+      const lines = arenas.map((a) => `${esc(a.code)} · ${esc(MAP_NAMES[a.map] ?? a.map)} · ${a.phase} · ${a.clients.size} player${a.clients.size === 1 ? '' : 's'}${prizeRound(a) ? ' · prize round' : ''}`);
+      return `<b>${wss.clients.size} online</b>\n${lines.join('\n') || 'No public rounds running.'}`;
+    }
+    default:
+      return HELP;
+  }
+}
+
+const telegram = new TelegramBot({
+  token: env.TELEGRAM_BOT_TOKEN,
+  admins: String(env.TELEGRAM_ADMIN_IDS ?? '').split(',').map((s) => s.trim()),
+  onCommand: onTelegramCommand,
+  commands: [
+    { command: 'pool', description: 'Show or set the prize pot' },
+    { command: 'split', description: 'How the pot is shared (e.g. 60 25 15)' },
+    { command: 'minplayers', description: 'Real players a prize round needs' },
+    { command: 'claims', description: 'Latest winners and their wallets' },
+    { command: 'status', description: 'Who is playing right now' },
+    { command: 'help', description: 'All commands' },
+  ],
+});
+telegram.start();
 
 server.listen(CFG.port, () => console.log(`SISYPHUS server on :${CFG.port} (ws /ws, stats ${CFG.dataDir})`));

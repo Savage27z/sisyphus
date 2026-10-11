@@ -1,7 +1,8 @@
 import { CONFIG } from './config';
 import { apiUrl } from './endpoint';
 import type { Game } from './game';
-import { renderMapCards } from './maps';
+import { MAPS, renderMapCards } from './maps';
+import { isSymbol, ORDINAL } from './money';
 
 const $ = (id: string) => document.getElementById(id)!;
 const SHEETS = ['howto', 'records', 'settings', 'credits', 'leaderboard', 'mywins', 'practice'];
@@ -22,6 +23,7 @@ interface PublicStats {
   playing: number;
   prize: number;
   currency: string;
+  split?: number[];
   minPlayers: number;
   arenas: ArenaStat[];
 }
@@ -151,21 +153,31 @@ export class Home {
     const s = this.lastStats;
     $('liveLine').classList.toggle('offline', !s);
     if (!s) {
-      $('homePrize').textContent = '$25';
+      this.renderPot(25, '$', [100]);
       $('homeOnline').textContent = "Can't reach the server";
       $('homeRound').textContent = 'Practice still works';
       return;
     }
-    $('homePrize').textContent = `${s.currency}${s.prize}`;
+    this.renderPot(s.prize, s.currency, s.split ?? [100]);
     $('homeOnline').textContent = `${s.online} here now`;
     const elapsed = (performance.now() - this.statsAt) / 1000;
-    const a = [...s.arenas].sort((x, y) => y.humans - x.humans)[0];
+    const a = [...(s.arenas ?? [])].sort((x, y) => y.humans - x.humans)[0];
     let line: string;
     if (!a) line = `Prize rounds at ${s.minPlayers}+ players`;
     else if (a.phase === 'playing' && a.endsIn !== null) line = `Round ends in ${clock(Math.max(0, a.endsIn - elapsed))}`;
     else if (a.phase === 'lobby' && a.startsIn !== null) line = `Next round in ${clock(Math.max(0, a.startsIn - elapsed))}`;
     else line = 'Next round starting soon';
     $('homeRound').textContent = line;
+  }
+
+  /** The sticker on PLAY: "WIN $25", or "POT 2.5 SOL" when the top places share it. */
+  private renderPot(amount: number, currency: string, split: number[]): void {
+    const n = String(Math.round(amount * 1e4) / 1e4);
+    const symbol = isSymbol(currency);
+    $('homePrizeTop').textContent = split.length > 1 ? 'POT' : 'WIN';
+    $('homePrize').textContent = symbol ? `${currency}${n}` : n;
+    $('homePrizeUnit').textContent = symbol ? '' : currency;
+    $('homePrize').classList.toggle('long', (symbol ? n.length + 1 : n.length) > 4);
   }
 
   private async renderLeaderboard(): Promise<void> {
@@ -185,6 +197,7 @@ export class Home {
   private async renderMyWins(): Promise<void> {
     const body = $('mywinsBody');
     const list = $('mywinsList');
+    this.renderPrizes();
     body.innerHTML = '';
     list.innerHTML = '<li class="dim">Loading…</li>';
     const me = await this.game.lobby.fetchMe();
@@ -201,6 +214,28 @@ export class Home {
     list.innerHTML = me.recent.length
       ? me.recent.map((r) => `<li><b>${new Date(r.at).toLocaleString()}</b> — ${r.prizeRound ? 'prize round' : 'warm-up round'} (${r.reason === 'flag' ? 'held the flag' : 'highest at the bell'})</li>`).join('')
       : '<li class="dim">No wins yet. Grab that flag!</li>';
+  }
+
+  /** Prizes won in this browser: claim the ones still waiting for a wallet. */
+  private renderPrizes(): void {
+    const box = $('mywinsPrizes');
+    const prizes = this.game.claims.all();
+    box.classList.toggle('hidden', !prizes.length);
+    box.innerHTML = prizes
+      .map((p) => {
+        const what = `<b>${ORDINAL[p.place - 1] ?? `#${p.place}`}</b> · ${esc(p.label)} · ${esc(MAPS.find((m) => m.id === p.map)?.name ?? p.map)}`;
+        const action = p.wallet
+          ? `<span class="dim">sent to ${esc(p.wallet.slice(0, 4))}…${esc(p.wallet.slice(-4))}</span>`
+          : `<button class="claimBtn small" data-token="${esc(p.token)}">CLAIM</button>`;
+        return `<li>${what}${action}</li>`;
+      })
+      .join('');
+    box.querySelectorAll<HTMLElement>('[data-token]').forEach((b) =>
+      b.addEventListener('click', () => {
+        this.closeSheets();
+        this.game.claims.open(b.dataset.token);
+      }),
+    );
   }
 
   // ------------------------------------------------------------------ sheets

@@ -81,7 +81,7 @@
           <div class="goWrap">
             <div class="prizeBurst">
               <svg viewBox="0 0 100 100" aria-hidden="true"><polygon points="50.0,2.0 58.7,12.0 70.8,6.8 74.3,19.5 87.5,20.1 85.1,33.1 96.8,39.3 89.0,50.0 96.8,60.7 85.1,66.9 87.5,79.9 74.3,80.5 70.8,93.2 58.7,88.0 50.0,98.0 41.3,88.0 29.2,93.2 25.7,80.5 12.5,79.9 14.9,66.9 3.2,60.7 11.0,50.0 3.2,39.3 14.9,33.1 12.5,20.1 25.7,19.5 29.2,6.8 41.3,12.0" /></svg>
-              <span class="burstText"><small>WIN</small><b id="homePrize">$25</b></span>
+              <span class="burstText"><small id="homePrizeTop">WIN</small><b id="homePrize">$25</b><small id="homePrizeUnit"></small></span>
             </div>
             <button id="playOnlineBtn" class="bigPlay homeGo"><span class="goMain">PLAY</span><span class="goSub">PUBLIC ROUND · UP TO 24 CLIMBERS</span></button>
           </div>
@@ -182,6 +182,7 @@
         <button class="closeX" id="arenaClose" aria-label="Leave">✕</button>
         <h2 id="arenaTitle">PLAY ONLINE</h2>
         <div id="arenaPrize" class="arenaPrize"></div>
+        <button id="arenaClaim" class="claimBtn hidden">CLAIM YOUR PRIZE</button>
         <div id="arenaMap" class="arenaMap"></div>
         <label id="arenaNameRow" class="nameRow onlineName hidden">Your name <input id="arenaName" maxlength="14" autocomplete="off" spellcheck="false" placeholder="Pick a name" /></label>
         <button id="arenaGo" class="bigPlay hidden">JOIN</button>
@@ -215,6 +216,7 @@
       <div class="panel sheet">
         <button class="closeX" data-close="mywins" aria-label="Close">✕</button>
         <h2>MY WINS</h2>
+        <ul id="mywinsPrizes" class="prizeList hidden"></ul>
         <div id="mywinsBody" class="recordsGrid"></div>
         <ul id="mywinsList" class="creditList"></ul>
         <p class="hint">Your wins are tied to this browser.</p>
@@ -279,9 +281,35 @@
         <h1 id="endTitle"></h1>
         <p id="endSub" class="tag"></p>
         <div id="endStats"></div>
+        <button id="endClaim" class="claimBtn hidden">CLAIM YOUR PRIZE</button>
         <button id="againBtn">PLAY AGAIN</button>
         <button id="endMenuBtn" class="secondary">MENU</button>
         <p id="endHint" class="hint">or press <kbd>R</kbd></p>
+      </div>
+    </div>
+
+    <!-- Prize page: someone who placed in a prize round sends their Solana address. -->
+    <div id="claim" class="overlay sheetOverlay hidden">
+      <div class="panel sheet claimSheet">
+        <button class="closeX" id="claimClose" aria-label="Close">✕</button>
+        <div id="claimBadge" class="claimBadge" data-place="1">1ST</div>
+        <h2 id="claimTitle">YOU WON!</h2>
+        <p id="claimPrize" class="claimPrize"></p>
+        <p id="claimSub" class="claimSub"></p>
+        <div id="claimForm">
+          <label class="claimLabel" for="claimWallet">Your Solana wallet address</label>
+          <input id="claimWallet" maxlength="100" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste it from Phantom, Solflare or Backpack" />
+          <p class="claimWarn">Only your public address. Never share your seed phrase or private key: nobody from Sisyphus will ever ask for them.</p>
+          <button id="claimSend" class="bigPlay">SEND MY WALLET</button>
+          <button id="claimLater" class="secondary">LATER</button>
+        </div>
+        <div id="claimDone" class="claimDone hidden">
+          <div class="claimTick">✓</div>
+          <p id="claimDoneText"></p>
+          <button id="claimDoneBtn">DONE</button>
+          <button id="claimChange" class="secondary">CHANGE ADDRESS</button>
+        </div>
+        <p id="claimStatus" class="hint claimStatus"></p>
       </div>
     </div>
 

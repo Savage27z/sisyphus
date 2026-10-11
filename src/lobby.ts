@@ -1,5 +1,6 @@
 import type { Game } from './game';
 import { mapName, renderMapCards } from './maps';
+import { money } from './money';
 import { playerSecret, type RoomInfo } from './net';
 
 const $ = (id: string) => document.getElementById(id)!;
@@ -161,7 +162,11 @@ export class Lobby {
     if (!room || !room.public) return;
     const n = room.players.length;
     $('arenaTitle').textContent = room.prizeRound ? 'PRIZE ROUND' : 'WARM-UP ROUND';
-    const prize = `${room.currency}${room.prize} to whoever holds the flag`;
+    const split = room.split ?? [100];
+    const prize =
+      split.length > 1
+        ? `${money(room.prize, room.currency)} pot · the top ${split.length} get paid (${split.join('/')})`
+        : `${money(room.prize, room.currency)} to whoever holds the flag`;
     if (room.phase === 'lobby') {
       $('arenaPrize').textContent = room.prizeRound ? prize : `Prize rounds need ${room.minPlayers} players — ${Math.max(0, room.minPlayers - n)} more to go`;
     } else {

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { money } from './money';
 import { CONFIG, TOWER_HEIGHT, floorOf } from './config';
 import { WEAPONS } from './combat';
 import { TRAP_KINDS, TRAP_NAMES } from './traps';
@@ -91,7 +92,7 @@ export class Hud {
     const el = document.getElementById('prizeBadge')!;
     el.classList.toggle('hidden', !room);
     if (!room) return;
-    el.textContent = room.prizeRound ? `${room.currency}${room.prize} PRIZE ROUND` : 'WARM-UP ROUND';
+    el.textContent = room.prizeRound ? `${money(room.prize, room.currency)} PRIZE ROUND` : 'WARM-UP ROUND';
     el.classList.toggle('warmup', !room.prizeRound);
   }
 

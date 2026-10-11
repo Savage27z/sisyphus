@@ -7,6 +7,7 @@ import { Sfx } from './audio';
 import { Bot, type BotSkill } from './bots';
 import { ThirdPersonCamera } from './camera';
 import { Character } from './character';
+import { Claims } from './claim';
 import type { Arena, MapId } from './arena';
 import { buildCity, type Backdrop } from './city';
 import { createMap, mapInfo, nextMap } from './maps';
@@ -22,6 +23,7 @@ import { Hud } from './hud';
 import { Input } from './input';
 import { Lobby } from './lobby';
 import { Locker } from './locker';
+import { money, ORDINAL } from './money';
 import { Net, type RosterEntry } from './net';
 import { PlayerController } from './player';
 import { loadRecords, loadSettings, saveRecords, saveSettings, type Records, type Settings } from './prefs';
@@ -53,14 +55,16 @@ interface RoundResult {
   prize: number;
   currency: string;
   disqualified: boolean;
+  /** Paid places in a prize round, in finishing order. */
+  places?: { place: number; name: string; share: number; label: string }[];
 }
 
-function prizeLine(r: RoundResult, iWon: boolean): string {
+function prizeLine(r: RoundResult): string {
   if (!r.prizeRound) return '';
-  const amount = `${r.currency}${r.prize}`;
-  if (r.disqualified) return `No prize: the winner was flagged for impossible movement.`;
-  if (r.bot || !r.who) return `A bot took it — the ${amount} prize wasn't won this round.`;
-  return iWon ? `You won the ${amount} prize!` : `${r.winnerName} wins the ${amount} prize.`;
+  const places = r.places ?? [];
+  const flagged = r.disqualified ? ' The winner was flagged for impossible movement, so the prize skipped them.' : '';
+  if (!places.length) return `No real player finished in a paid place, so the ${money(r.prize, r.currency)} pot wasn't won.${flagged}`;
+  return `Prizes: ${places.map((p) => `${ORDINAL[p.place - 1]} ${p.name} ${p.label}`).join(' · ')}.${flagged}`;
 }
 
 interface RosterSpec {
@@ -107,6 +111,7 @@ export class Game {
   private readonly locker: Locker;
   private readonly director: Director;
   readonly home: Home;
+  readonly claims: Claims;
   readonly lobby: Lobby;
   settings: Settings;
   records: Records;
@@ -190,8 +195,12 @@ export class Game {
     this.settings = loadSettings();
     this.records = loadRecords();
     this.applySettings();
+    this.claims = new Claims();
+    this.claims.onChange = () => this.syncClaimButtons();
     this.home = new Home(this);
     this.lobby = new Lobby(this);
+    for (const id of ['endClaim', 'arenaClaim']) document.getElementById(id)!.addEventListener('click', () => this.claims.open());
+    this.syncClaimButtons();
 
     window.addEventListener('resize', () => {
       this.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -655,6 +664,9 @@ export class Game {
     net.on('flag', (m) => this.mode === 'online' && this.flag.setHolder(m.holder ? this.charByNet.get(m.holder) ?? null : null, m.since));
     net.on('crate', (m) => this.mode === 'online' && this.airdrops.spawnAt(m.id, m.spot, !!m.rack));
     net.on('gone', (m) => this.mode === 'online' && this.airdrops.taken(m.id, this.charByNet.get(m.who) ?? null, m.weapon, m.trap));
+    net.on('prize', (m) => {
+      this.claims.won({ token: String(m.token), place: Number(m.place), share: Number(m.share), label: String(m.label), pot: String(m.pot), map: String(m.map), at: Number(m.at) || Date.now() });
+    });
     net.on('win', (m) => {
       if (this.mode !== 'online' || (this.state !== 'playing' && this.state !== 'paused')) return;
       this.finish(this.charByNet.get(m.who) ?? null, m.reason === 'time', m as unknown as RoundResult);
@@ -733,6 +745,10 @@ export class Game {
     this.home.hide();
     // Arenas start the next round on their own, maybe while we're still reading the last result.
     for (const id of ['pause', 'end']) document.getElementById(id)!.classList.add('hidden');
+    if (this.claims.isOpen) {
+      this.claims.close();
+      this.hud.popup('PRIZE SAVED: CLAIM IT AFTER THIS ROUND', '#ffe14d', true);
+    }
     this.mode = 'online';
     this.matchSeconds = this.net.room?.matchSeconds ?? CONFIG.MATCH_SECONDS;
     this.matchAt = at;
@@ -1048,7 +1064,7 @@ export class Game {
       : c?.isPlayer
         ? 'Flag captured. Nobody could stop you.'
         : 'They held the flag for 3 seconds.';
-    this.showEnd(title, result ? `${sub} ${prizeLine(result, c === this.player)}` : sub);
+    this.showEnd(title, result ? `${sub} ${prizeLine(result)}` : sub);
   }
 
   private timeUp(): void {
@@ -1072,5 +1088,13 @@ export class Game {
     ].join('<br/>');
     document.getElementById('endHint')!.classList.toggle('hidden', this.mode === 'online');
     document.getElementById('end')!.classList.remove('hidden');
+    this.syncClaimButtons();
+  }
+
+  /** "Claim your prize" shows wherever it can be reached while a prize still needs a wallet. */
+  syncClaimButtons(): void {
+    const waiting = this.claims.unclaimed().length > 0;
+    for (const id of ['endClaim', 'arenaClaim']) document.getElementById(id)!.classList.toggle('hidden', !waiting);
+    document.getElementById('winsBtn')!.classList.toggle('hasPrize', waiting);
   }
 }
