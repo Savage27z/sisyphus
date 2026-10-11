@@ -459,6 +459,7 @@ button:active {
 }
 .nameRow input {
   flex: 1;
+  min-width: 0;
   padding: 8px 12px;
   border: 3px solid #2c2633;
   border-radius: 12px;
@@ -527,6 +528,39 @@ button:active {
   font-size: 13px;
   opacity: 0.8;
   text-align: center;
+}
+/* Upright screens: your fighter up top, the options in a sheet along the bottom (Locker.updateCamera). */
+@media (orientation: portrait) {
+  .lockerPanel {
+    top: auto;
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    width: auto;
+    height: 55%;
+    padding: 12px 14px 0;
+    border-radius: 20px;
+  }
+  .lockerPanel h2 {
+    margin-bottom: 6px;
+    font-size: 22px;
+  }
+  .lockerSection h3 {
+    margin: 10px 0 5px;
+  }
+  .chip.swatch {
+    width: 30px;
+    height: 30px;
+  }
+  /* Randomize and Done stay reachable at the bottom of the sheet while it scrolls. */
+  .lockerActions {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    margin: 12px -14px 0;
+    padding: 10px 14px 12px;
+    background: linear-gradient(to bottom, rgba(28, 30, 64, 0), rgba(28, 30, 64, 0.97) 30%);
+  }
 }
 #endStats {
   margin: 10px 0 22px;
@@ -981,6 +1015,52 @@ button:active {
   }
   #homeRound:not(:empty)::before {
     display: none;
+  }
+  /* Phones: labels and icons scale with the screen so they fit even 360px-wide ones. */
+  .tagline {
+    font-size: clamp(12px, 3.6vw, 17px);
+  }
+  .goSub {
+    font-size: clamp(9px, 2.6vw, 12px);
+    letter-spacing: clamp(0.5px, 0.35vw, 2px);
+    white-space: nowrap;
+  }
+  .menuBtn {
+    gap: clamp(6px, 2vw, 12px);
+    padding: 5px 8px 5px 5px;
+    font-size: clamp(10.5px, 3.1vw, 14px);
+    letter-spacing: 0.5px;
+  }
+  .mIcon {
+    width: clamp(28px, 8.6vw, 38px);
+    height: clamp(28px, 8.6vw, 38px);
+  }
+  .modeBtn {
+    gap: 8px;
+    padding: 8px 9px;
+  }
+  .modeIcon {
+    width: clamp(30px, 9vw, 40px);
+    height: clamp(30px, 9vw, 40px);
+  }
+  .modeText b {
+    overflow: hidden;
+    font-size: clamp(13px, 4vw, 18px);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* A smaller sticker, higher up, so it clears the PLAY subtitle. */
+  .prizeBurst {
+    top: -16px;
+    right: -10px;
+    width: 92px;
+    height: 92px;
+  }
+  .burstText small {
+    font-size: 13px;
+  }
+  .burstText b {
+    font-size: 25px;
   }
 }
 

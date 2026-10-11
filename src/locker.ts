@@ -60,6 +60,13 @@ export class Locker {
     p.yaw = Math.PI / 2 + Math.sin(this.spin) * 0.9;
     const cam = this.game.cam.cam;
     const target = new THREE.Vector3(p.pos.x, p.pos.y + 0.25, p.pos.z);
+    if (this.game.viewH > this.game.viewW) {
+      // Upright screen: the options sheet covers the bottom half, so frame the whole fighter in
+      // the top part (look down past them, so they sit high in the picture).
+      cam.position.set(target.x + 3.5, target.y + 1.1, target.z);
+      cam.lookAt(target.x, target.y - 1.9, target.z);
+      return;
+    }
     // Offset so the fighter sits on the right, clear of the options panel.
     cam.position.set(target.x + 2.7, target.y + 0.35, target.z + 0.9);
     cam.lookAt(target.x, target.y, target.z + 0.9);
