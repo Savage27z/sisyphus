@@ -20,7 +20,7 @@ export const BTN = {
   Right: 15,
 } as const;
 
-const DEAD = 0.18;
+const DEAD = 0.14;
 
 /** Radial deadzone, rescaled so just past the deadzone is just above zero. */
 function stick(x: number, y: number): [number, number] {

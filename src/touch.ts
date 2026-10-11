@@ -99,6 +99,12 @@ export class TouchControls {
     if (e.pointerType === 'mouse') return;
     e.preventDefault();
     this.enable();
+    // A touchscreen laptop that started with the mouse: let go of the pointer lock, which zeroes
+    // finger positions. This touch is lost; the next one works.
+    if (document.pointerLockElement) {
+      document.exitPointerLock();
+      return;
+    }
     const ctl = this.game.playerCtl;
     const t = e.target as HTMLElement;
     if (t.closest('.tPause')) {

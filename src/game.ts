@@ -199,7 +199,8 @@ export class Game {
     });
     document.addEventListener('pointerlockchange', () => {
       if (this.input.locked) this.hadLock = true;
-      else if (this.state === 'playing' && this.hadLock) this.pause();
+      // Losing the mouse pauses, unless a finger took over (touch screens drop the lock on purpose).
+      else if (this.state === 'playing' && this.hadLock && !this.touch.active) this.pause();
     });
     this.wireMenus();
     this.wireNet();
@@ -580,7 +581,9 @@ export class Game {
     this.sfx.init();
     this.sfx.muted = false;
     this.sfx.startMusic();
-    this.input.requestLock();
+    // Mouse look only. While the pointer is locked the browser reports every finger at 0,0,
+    // which would leave the move stick and swipe-to-look dead on phones.
+    if (!this.touch.enabled) this.input.requestLock();
     this.state = 'playing';
     this.last = performance.now();
     this.hud.setVisible(true);

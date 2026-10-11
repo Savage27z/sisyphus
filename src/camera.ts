@@ -14,6 +14,8 @@ export class ThirdPersonCamera {
   pitch = 0.3;
   dist = 6.5;
   private curDist = 6.5;
+  /** Right stick held at the edge: extra turn speed ramps in (0..1). */
+  private turnBoost = 0;
   private fov = BASE_FOV;
   /** Point the camera orbits (right shoulder); the aim ray starts here. */
   readonly pivot = new THREE.Vector3();
@@ -34,13 +36,18 @@ export class ThirdPersonCamera {
     this.yaw -= m.dx * sens;
     this.pitch = THREE.MathUtils.clamp(this.pitch + m.dy * sens * (this.invertY ? -1 : 1), -1.0, 1.35);
     this.dist = THREE.MathUtils.clamp(this.dist + m.wheel * 0.8, 2.5, 14);
-    // Right stick: turn speed grows with the square of the tilt, for fine aiming near the centre.
+    // Right stick: a gentle curve keeps small tilts precise without feeling sluggish, and holding
+    // the stick at the edge ramps in a turn boost for quick 180s.
     const pad = game.input.pad;
     if (pad.connected && game.state === 'playing' && !game.padNav.capturing) {
-      const curve = (v: number) => Math.sign(v) * v * v;
-      const rate = 3.4 * this.sensitivity;
-      this.yaw -= curve(pad.rx) * rate * dt;
-      this.pitch = THREE.MathUtils.clamp(this.pitch + curve(pad.ry) * rate * 0.65 * dt * (this.invertY ? -1 : 1), -1.0, 1.35);
+      const curve = (v: number) => Math.sign(v) * Math.abs(v) ** 1.5;
+      const rate = 4.4 * this.sensitivity;
+      const atEdge = Math.abs(pad.rx) > 0.9;
+      this.turnBoost = atEdge ? Math.min(1, this.turnBoost + dt / 0.3) : 0;
+      this.yaw -= curve(pad.rx) * (rate + this.turnBoost * 3 * this.sensitivity) * dt;
+      this.pitch = THREE.MathUtils.clamp(this.pitch + curve(pad.ry) * rate * 0.6 * dt * (this.invertY ? -1 : 1), -1.0, 1.35);
+    } else {
+      this.turnBoost = 0;
     }
 
     const cp = Math.cos(this.pitch);
