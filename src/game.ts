@@ -17,7 +17,7 @@ import { Director } from './director';
 import { Flag } from './flag';
 import { Fx } from './fx';
 import { PadNav } from './gamepad';
-import { TouchControls } from './touch';
+import { goLandscape, TouchControls } from './touch';
 import { Home } from './home';
 import { Hud } from './hud';
 import { Input } from './input';
@@ -88,6 +88,9 @@ export class Game {
   readonly padNav: PadNav;
   touch!: TouchControls;
   /** Fighters drawn in full / as plain models (fewer with low graphics). */
+  /** Size the game is drawn at: the screen, or the screen turned sideways (see updateRotation). */
+  viewW = window.innerWidth;
+  viewH = window.innerHeight;
   private maxFull = MAX_FULL;
   private maxLite = MAX_LITE;
   private graphicsLow: boolean | null = null;
@@ -202,10 +205,7 @@ export class Game {
     for (const id of ['endClaim', 'arenaClaim']) document.getElementById(id)!.addEventListener('click', () => this.claims.open());
     this.syncClaimButtons();
 
-    window.addEventListener('resize', () => {
-      this.renderer.setSize(window.innerWidth, window.innerHeight);
-      this.cam.resize(window.innerWidth / window.innerHeight);
-    });
+    window.addEventListener('resize', () => this.updateRotation());
     document.addEventListener('pointerlockchange', () => {
       if (this.input.locked) this.hadLock = true;
       // Losing the mouse pauses, unless a finger took over (touch screens drop the lock on purpose).
@@ -511,7 +511,7 @@ export class Game {
     const first = this.graphicsLow === null;
     this.graphicsLow = low;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, low ? 1 : 1.75));
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.setSize(this.viewW, this.viewH);
     this.maxFull = low ? 2 : MAX_FULL;
     this.maxLite = low ? 3 : MAX_LITE;
     if (this.renderer.shadowMap.enabled === !low) return;
@@ -582,12 +582,7 @@ export class Game {
 
   private begin(): void {
     // Phones: full screen, sideways (where the browser allows it; it needs a tap to start).
-    if (this.touch.enabled && !document.fullscreenElement) {
-      document.documentElement
-        .requestFullscreen?.({ navigationUI: 'hide' })
-        .then(() => (screen.orientation as unknown as { lock?: (o: string) => Promise<void> }).lock?.('landscape'))
-        .catch(() => {});
-    }
+    if (this.touch.enabled) goLandscape();
     this.sfx.init();
     this.sfx.muted = false;
     this.sfx.startMusic();
@@ -597,6 +592,25 @@ export class Game {
     this.state = 'playing';
     this.last = performance.now();
     this.hud.setVisible(true);
+  }
+
+  /**
+   * A phone held upright during a round: turn the whole game a quarter turn so it plays sideways
+   * once the phone is turned, even with rotation lock on. (Android has usually gone landscape on the
+   * PLAY tap already; iPhones can't be turned by a website, so this is how they get there.)
+   */
+  updateRotation(): void {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const rotate = this.touch.enabled && this.hud.visible && h > w;
+    const body = document.body;
+    body.classList.toggle('rotated', rotate);
+    body.style.setProperty('--rot-w', `${rotate ? h : w}px`);
+    body.style.setProperty('--rot-h', `${rotate ? w : h}px`);
+    this.viewW = rotate ? h : w;
+    this.viewH = rotate ? w : h;
+    this.renderer.setSize(this.viewW, this.viewH);
+    this.cam.resize(this.viewW / this.viewH);
   }
 
   /** Start on the controller. */

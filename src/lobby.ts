@@ -2,6 +2,7 @@ import type { Game } from './game';
 import { mapName, renderMapCards } from './maps';
 import { money } from './money';
 import { playerSecret, type RoomInfo } from './net';
+import { goLandscape } from './touch';
 
 const $ = (id: string) => document.getElementById(id)!;
 const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
@@ -29,13 +30,19 @@ export class Lobby {
 
     // ---- friends rooms
     $('onlineClose').addEventListener('click', () => this.close());
-    $('createRoomBtn').addEventListener('click', () => void this.withConnection($('onlineName') as HTMLInputElement, () => net.send({ t: 'create' })));
+    $('createRoomBtn').addEventListener('click', () => {
+      goLandscape();
+      void this.withConnection($('onlineName') as HTMLInputElement, () => net.send({ t: 'create' }));
+    });
     const join = () => {
       const code = ($('joinCode') as HTMLInputElement).value.trim().toUpperCase();
       if (code.length < 4) return this.setStatus('Type the 5-letter room code.');
       void this.withConnection($('onlineName') as HTMLInputElement, () => net.send({ t: 'join', code }));
     };
-    $('joinRoomBtn').addEventListener('click', join);
+    $('joinRoomBtn').addEventListener('click', () => {
+      goLandscape();
+      join();
+    });
     $('onlineName').addEventListener('keydown', (e) => e.stopPropagation());
     $('joinCode').addEventListener('keydown', (e) => {
       e.stopPropagation();
@@ -98,6 +105,7 @@ export class Lobby {
 
   /** PLAY ONLINE: into the next public round (or the one in progress). */
   playOnline(): void {
+    goLandscape();
     this.game.home.hide();
     this.arena.classList.remove('hidden');
     this.game.warmRigPool();

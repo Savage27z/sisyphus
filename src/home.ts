@@ -3,6 +3,7 @@ import { apiUrl } from './endpoint';
 import type { Game } from './game';
 import { MAPS, renderMapCards } from './maps';
 import { isSymbol, ORDINAL } from './money';
+import { goLandscape } from './touch';
 
 const $ = (id: string) => document.getElementById(id)!;
 const SHEETS = ['howto', 'records', 'settings', 'credits', 'leaderboard', 'mywins', 'practice'];
@@ -44,6 +45,7 @@ export class Home {
     $('practiceLink').addEventListener('click', (e) => {
       e.preventDefault();
       renderMapCards($('practiceMaps'), game.tower.id, (id) => {
+        goLandscape();
         this.closeSheets();
         this.hide();
         game.setMap(id);

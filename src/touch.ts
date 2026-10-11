@@ -5,6 +5,19 @@ import type { Game } from './game';
 export const isTouchDevice =
   typeof matchMedia !== 'undefined' && (matchMedia('(hover: none) and (pointer: coarse)').matches || (navigator.maxTouchPoints > 0 && matchMedia('(pointer: coarse)').matches));
 
+/**
+ * Phones: full screen and sideways. Browsers only allow it straight from a tap, so the buttons
+ * that start play call this (Android turns; iPhones can't be turned by a website, see
+ * Game.updateRotation for what happens there instead).
+ */
+export function goLandscape(): void {
+  if (!(isTouchDevice || document.body.classList.contains('touch')) || document.fullscreenElement) return;
+  document.documentElement
+    .requestFullscreen?.({ navigationUI: 'hide' })
+    .then(() => (screen.orientation as unknown as { lock?: (o: string) => Promise<void> }).lock?.('landscape'))
+    .catch(() => {});
+}
+
 const STICK_R = 58; // px the knob can travel
 const LOOK_SPEED = 1.6; // swipe pixels → the same turn as this many mouse pixels
 
@@ -95,6 +108,12 @@ export class TouchControls {
     this.knob.style.transform = '';
   }
 
+  /** Where a finger is in the game's own frame, which is a quarter turn round when the game is. */
+  private local(e: PointerEvent): { x: number; y: number } {
+    if (!document.body.classList.contains('rotated')) return { x: e.clientX, y: e.clientY };
+    return { x: e.clientY, y: window.innerWidth - e.clientX };
+  }
+
   private down(e: PointerEvent): void {
     if (e.pointerType === 'mouse') return;
     e.preventDefault();
@@ -120,28 +139,30 @@ export class TouchControls {
       ctl.queueMelee();
       return;
     }
+    const p = this.local(e);
     if (t.closest('.tFire')) {
       this.firePointer = e.pointerId;
       this.firing = true;
       ctl.queueFire();
-      this.lookers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      this.lookers.set(e.pointerId, p);
       return;
     }
-    if (e.clientX < window.innerWidth * 0.42 && this.movePointer < 0) {
+    if (p.x < this.game.viewW * 0.42 && this.movePointer < 0) {
       this.movePointer = e.pointerId;
-      this.moveOrigin = { x: e.clientX, y: e.clientY };
-      this.stick.style.left = `${e.clientX}px`;
-      this.stick.style.top = `${e.clientY}px`;
+      this.moveOrigin = p;
+      this.stick.style.left = `${p.x}px`;
+      this.stick.style.top = `${p.y}px`;
       this.stick.classList.add('on');
       return;
     }
-    this.lookers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    this.lookers.set(e.pointerId, p);
   }
 
   private move(e: PointerEvent): void {
+    const p = this.local(e);
     if (e.pointerId === this.movePointer) {
-      let dx = e.clientX - this.moveOrigin.x;
-      let dy = e.clientY - this.moveOrigin.y;
+      let dx = p.x - this.moveOrigin.x;
+      let dy = p.y - this.moveOrigin.y;
       const len = Math.hypot(dx, dy);
       if (len > STICK_R) {
         dx *= STICK_R / len;
@@ -155,9 +176,9 @@ export class TouchControls {
     }
     const last = this.lookers.get(e.pointerId);
     if (!last) return;
-    this.game.input.addLook((e.clientX - last.x) * LOOK_SPEED, (e.clientY - last.y) * LOOK_SPEED);
-    last.x = e.clientX;
-    last.y = e.clientY;
+    this.game.input.addLook((p.x - last.x) * LOOK_SPEED, (p.y - last.y) * LOOK_SPEED);
+    last.x = p.x;
+    last.y = p.y;
   }
 
   private up(e: PointerEvent): void {

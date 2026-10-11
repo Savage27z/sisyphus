@@ -1791,7 +1791,7 @@ body.touch #floorBox {
 }
 @media (orientation: portrait) {
   /* Upright phones: weapon, health and traps go under the clock, clear of the buttons. */
-  body.touch #bottom {
+  body.touch:not(.rotated) #bottom {
     top: 64px;
     bottom: auto;
   }
@@ -2139,4 +2139,38 @@ body.touch .feedItem:nth-child(n + 4) {
     height: 64px;
     font-size: 22px;
   }
+}
+
+/* ---------- Phones held upright during a round: the game turns a quarter (Game.updateRotation) ---------- */
+body.rotated {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: var(--rot-w);
+  height: var(--rot-h);
+  overflow: hidden;
+  transform-origin: 0 0;
+  transform: translateX(var(--rot-h)) rotate(90deg);
+}
+body.rotated #rotateHint {
+  display: none !important;
+}
+/* Turned sideways, the game is as short as a phone in landscape: same compact HUD. */
+body.rotated #floorBox {
+  transform: scale(0.7);
+  transform-origin: top left;
+}
+body.rotated .tFire {
+  bottom: 100px;
+  width: 86px;
+  height: 86px;
+}
+body.rotated #race {
+  bottom: 205px;
+}
+/* Menus over the round fit the short side and scroll. */
+body.rotated .panel,
+body.rotated .sheet {
+  max-height: calc(var(--rot-h) - 24px);
+  overflow-y: auto;
 }

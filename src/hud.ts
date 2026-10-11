@@ -45,6 +45,11 @@ export class Hud {
 
   setVisible(v: boolean): void {
     this.root.classList.toggle('hidden', !v);
+    this.game.updateRotation();
+  }
+
+  get visible(): boolean {
+    return !this.root.classList.contains('hidden');
   }
 
   popup(text: string, color = '#ffffff', small = false): void {
@@ -164,8 +169,8 @@ export class Hud {
   private updateMarkers(): void {
     const game = this.game;
     const cam = game.cam.cam;
-    const W = window.innerWidth;
-    const H = window.innerHeight;
+    const W = game.viewW;
+    const H = game.viewH;
     const items: { pos: THREE.Vector3; text: string; color: string }[] = [];
     // Racks are part of the floor plan; only parachuted supply drops get a marker.
     for (const crate of game.airdrops.crates) {
