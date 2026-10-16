@@ -20,6 +20,9 @@
 // Prize rounds pay the top places (the split, e.g. 60/25/15): the winner, then the real players
 // who finished highest. Each placed player gets a private link to send a Solana wallet address,
 // which arrives in the Telegram bot; the payment itself is sent by hand.
+//
+// The cup (cup.mjs, started from Telegram) replaces round prizes while it runs: rounds with enough
+// real players give points instead, and when it ends the top of the table claim the prizes.
 
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -28,6 +31,7 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
+import { CLIMB_POINTS, Cup, MAX_CUP_PLACES, PLACE_POINTS } from './cup.mjs';
 import { Guard, STRIKES_TO_FLAG } from './guard.mjs';
 import { ORDINAL, Prizes, money } from './prizes.mjs';
 import { Stats } from './stats.mjs';
@@ -83,6 +87,9 @@ const prizes = new Prizes(CFG.dataDir, {
 });
 /** Current prize settings (the pot, currency, split, minimum real players). */
 const P = () => prizes.settings;
+const cup = new Cup(CFG.dataDir);
+/** Everyone connected, in a room or not (cup winners hear about their prize wherever they are). */
+const clients = new Set();
 const MAP_NAMES = { olympus: 'Mount Olympus', tower: 'The Tower', construction: 'Construction Site', hotel: 'Haunted Hotel' };
 const MEDAL = ['🥇', '🥈', '🥉'];
 let nextClient = 1;
@@ -151,6 +158,7 @@ function publicStats() {
     split: P().split,
     minPlayers: P().minPlayers,
     matchSeconds: MATCH_SECONDS,
+    cup: cup.summary(),
     arenas: arenas.map((a) => ({
       code: a.code,
       phase: a.phase,
@@ -159,7 +167,17 @@ function publicStats() {
       startsIn: a.phase === 'lobby' && a.nextAt ? Math.max(0, Math.round((a.nextAt - t) / 1000)) : null,
       endsIn: a.phase === 'playing' ? Math.max(0, Math.round((a.at + MATCH_SECONDS * 1000 - t) / 1000)) : null,
       prizeRound: prizeRound(a),
+      cupRound: cupRound(a),
     })),
+  };
+}
+
+/** The cup table, and how points are earned (so the page never disagrees with the server). */
+function leaderboard() {
+  return {
+    top: stats.leaderboard(50),
+    cup: cup.view(50),
+    rules: { places: PLACE_POINTS, climb: CLIMB_POINTS, minFloor: MIN_PRIZE_FLOOR, minPlayers: P().minPlayers },
   };
 }
 
@@ -171,7 +189,7 @@ const server = http.createServer((req, res) => {
     return;
   }
   if (url.pathname === '/api/stats') return json(res, publicStats());
-  if (url.pathname === '/api/leaderboard') return json(res, { top: stats.leaderboard(50) });
+  if (url.pathname === '/api/leaderboard') return json(res, leaderboard());
   if (url.pathname === '/api/claim') return handleClaim(req, res);
   let rel;
   try {
@@ -199,7 +217,10 @@ const server = http.createServer((req, res) => {
 const CLAIM_CORS = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'POST, OPTIONS', 'access-control-allow-headers': 'content-type' };
 const claimHits = new Map(); // ip -> { n, at }
 
-/** POST /api/claim { token, wallet }: a placed player sends the Solana address for their prize. */
+/**
+ * POST /api/claim: a placed player sends the Solana address for their prize. Round prizes come
+ * with { token, wallet }; cup prizes with { claim, secret, wallet } (the browser's own secret).
+ */
 function handleClaim(req, res) {
   const reply = (status, body) => {
     res.writeHead(status, { ...CLAIM_CORS, 'content-type': 'application/json', 'cache-control': 'no-store' });
@@ -230,7 +251,8 @@ function handleClaim(req, res) {
     } catch {
       return reply(400, { error: 'Bad request.' });
     }
-    const r = prizes.submit(String(msg?.token ?? ''), String(msg?.wallet ?? '').trim());
+    const wallet = String(msg?.wallet ?? '').trim();
+    const r = msg?.secret !== undefined ? prizes.submitCup(pidOf(msg.secret), Number(msg.claim), wallet) : prizes.submit(String(msg?.token ?? ''), wallet);
     if (r.error) return reply(400, { error: r.error });
     const c = r.claim;
     if (!r.same) telegram.notify(walletMessage(c, r.updated));
@@ -240,6 +262,15 @@ function handleClaim(req, res) {
 
 function walletMessage(c, updated) {
   const when = new Date(c.at).toISOString().replace('T', ' ').slice(0, 16);
+  if (c.kind === 'cup') {
+    return [
+      updated ? `✏️ <b>Wallet changed</b> · claim #${c.id}` : `💰 <b>Wallet in</b> · claim #${c.id}`,
+      `🏆 Cup #${c.cupId}, ${MEDAL[c.place - 1] ?? ''} ${ORDINAL[c.place - 1] ?? `#${c.place}`} place: <b>${esc(c.name)}</b> (${c.points} pts)`,
+      `Prize: <b>${esc(money(c.amount, c.currency))}</b>`,
+      `Wallet: <code>${esc(c.wallet)}</code>`,
+      `<a href="https://solscan.io/account/${esc(c.wallet)}">View on Solscan</a>`,
+    ].join('\n');
+  }
   return [
     updated ? `✏️ <b>Wallet changed</b> · claim #${c.id}` : `💰 <b>Wallet in</b> · claim #${c.id}`,
     `${MEDAL[c.place - 1] ?? ''} ${ORDINAL[c.place - 1] ?? c.place} place: <b>${esc(c.name)}</b>`,
@@ -259,6 +290,12 @@ function walletMessage(c, updated) {
 function clientIp(req) {
   const fwd = String(req.headers['x-forwarded-for'] ?? '').split(',').map((v) => v.trim()).filter(Boolean);
   return fwd.at(-1) || req.socket.remoteAddress || '?';
+}
+
+/** A player's stable id: a hash of the random secret their browser keeps (null if it isn't one). */
+function pidOf(secret) {
+  if (typeof secret !== 'string' || !/^[0-9a-f]{32,64}$/.test(secret)) return null;
+  return crypto.createHash('sha256').update(`pid:${secret}`).digest('hex').slice(0, 16);
 }
 
 /** A fighter's look, as small whole numbers only (the game maps each onto its own lists). */
@@ -318,6 +355,7 @@ function newRoom(isPublic, host) {
     nextCrate: 1,
     fresh: new Map(),
     prizeLocked: false,
+    cupId: 0,
     guard: new Guard(),
     entrants: new Set(),
   };
@@ -338,7 +376,17 @@ function broadcast(room, msg, except) {
  */
 function prizeRound(room) {
   if (room.phase !== 'lobby') return room.prizeLocked;
-  return room.public && P().amount > 0 && distinctPeople(room) >= P().minPlayers;
+  return !cup.running && P().amount > 0 && enoughPeople(room);
+}
+
+/** Cup rounds: the same rule, while a cup is taking new rounds (points instead of a prize). */
+function cupRound(room) {
+  if (room.phase !== 'lobby') return !!room.cupId;
+  return cup.open && enoughPeople(room);
+}
+
+function enoughPeople(room) {
+  return room.public && distinctPeople(room) >= P().minPlayers;
 }
 
 /** Real players in a room, counting everyone on one address once. */
@@ -369,6 +417,8 @@ function roomInfo(room) {
     split: pot.split,
     minPlayers: P().minPlayers,
     prizeRound: prizeRound(room),
+    cupRound: cupRound(room),
+    cup: room.public ? cup.summary() : null,
     players: [...room.clients.values()].map((c) => ({ id: c.id, name: c.name, style: c.style })),
   };
 }
@@ -411,7 +461,9 @@ function startMatch(room) {
     roster.push({ netId: `b:${i}`, kind: 'bot', owner: room.botOwner, seed: Math.floor(Math.random() * 2 ** 31), spawn: room.nextSpawn++ });
   }
   // Real players are counted per address, so a handful of tabs can't turn a round into a prize round.
-  room.prizeLocked = room.public && P().amount > 0 && distinctPeople(room) >= P().minPlayers;
+  // While a cup runs, rounds play for points instead of a prize of their own.
+  room.cupId = cup.open && enoughPeople(room) ? cup.current.id : 0;
+  room.prizeLocked = !cup.running && P().amount > 0 && enoughPeople(room);
   room.pot = room.prizeLocked ? { amount: P().amount, currency: P().currency, split: [...P().split] } : null;
   room.phase = 'playing';
   room.at = now() + COUNTDOWN_MS;
@@ -537,7 +589,18 @@ function endMatch(room, who, reason) {
     // Anyone the guard caught moving impossibly can't take a prize round.
     disqualified: !!winnerClient && room.guard.flagged(winnerClient.id),
     places: [],
+    cupRound: !!room.cupId,
+    cupTop: [],
   };
+  // Cup rounds: points by finishing order (same rules as paid places); each scorer hears their total.
+  if (room.cupId) {
+    const rows = placements(room, who, reason)
+      .filter((p) => p.pid)
+      .map((p, i) => ({ pid: p.pid, name: p.name, client: p.client, points: PLACE_POINTS[i] ?? CLIMB_POINTS, win: p.netId === who }));
+    cup.add(room.cupId, rows);
+    result.cupTop = rows.slice(0, PLACE_POINTS.length).map((r) => ({ name: r.name, points: r.points }));
+    for (const r of rows) send(r.client, { t: 'cupGain', points: r.points, ...cup.standing(r.pid) });
+  }
   // Prize rounds pay the top places; each placed player privately gets a link for their wallet.
   let awards = [];
   if (result.prizeRound && room.pot) {
@@ -666,15 +729,18 @@ function handle(client, msg) {
       client.name = String(msg.name ?? 'Player').replace(/[\u0000-\u001f]/g, '').slice(0, 14).trim() || 'Player';
       client.style = cleanStyle(msg.style);
       // A random secret kept in the player's browser gives them a stable id across visits.
-      if (typeof msg.secret === 'string' && /^[0-9a-f]{32,64}$/.test(msg.secret)) {
-        client.pid = crypto.createHash('sha256').update(`pid:${msg.secret}`).digest('hex').slice(0, 16);
+      const pid = pidOf(msg.secret);
+      if (pid) {
+        client.pid = pid;
         stats.seen(client.pid, client.name);
+        // A cup prize still waiting for its wallet: ask for it as soon as they're back.
+        if (msg.t === 'hello') for (const c of prizes.pendingFor(pid)) send(client, cupPrizeMessage(c));
       }
       if (room) sendRoom(room);
       return;
     }
     case 'me':
-      return send(client, { t: 'me', ...(client.pid ? stats.me(client.pid) : { name: client.name, wins: 0, rounds: 0, recent: [] }) });
+      return send(client, { t: 'me', ...(client.pid ? stats.me(client.pid) : { name: client.name, wins: 0, rounds: 0, recent: [] }), cup: cup.standing(client.pid) });
     case 'quick':
       return quickJoin(client);
     case 'create': {
@@ -820,6 +886,8 @@ wss.on('connection', (ws, req) => {
     else connPerIp.delete(ip);
   });
   const client = { id: nextClient++, ws, ip, name: 'Player', style: null, room: null, focused: true, pid: null, budget: 0, budgetAt: now() };
+  clients.add(client);
+  ws.on('close', () => clients.delete(client));
   send(client, { t: 'welcome', id: client.id });
   ws.on('message', (raw) => {
     // Flood guard: ~60 state packets/s is normal; far beyond that is someone misbehaving.
@@ -847,6 +915,41 @@ wss.on('connection', (ws, req) => {
   ws.on('close', () => leave(client));
 });
 
+// ------------------------------------------------------------------ the cup
+
+/** What a cup winner's game gets: their place and prize, to claim with this browser's secret. */
+function cupPrizeMessage(c) {
+  return { t: 'prize', cup: true, id: c.id, cupId: c.cupId, place: c.place, points: c.points, share: c.share, label: money(c.amount, c.currency), at: c.at };
+}
+
+/** Close the cup: the top of the table get their prize claims (and a message, if they're online). */
+function finishCup() {
+  const c = cup.current;
+  const claims = prizes.awardCup(c, cup.finish());
+  telegram.notify(cupOverMessage(c, claims));
+  for (const claim of claims) {
+    for (const client of clients) if (client.pid === claim.pid) send(client, cupPrizeMessage(claim));
+  }
+  announceSettings();
+}
+
+function cupOverMessage(c, claims) {
+  const lines = [`🏆 <b>Cup #${c.id} is over</b>`];
+  for (const k of claims) lines.push(`${MEDAL[k.place - 1] ?? `${k.place}.`} <b>${esc(k.name)}</b> · ${k.points} pts · ${esc(money(k.amount, k.currency))}`);
+  if (!claims.length) lines.push('Nobody scored a point, so there is nothing to pay.');
+  else lines.push('They claim it in the game (from the browser that earned the points); their wallets arrive here.');
+  return lines.join('\n');
+}
+
+// At the end time no new cup rounds start; rounds already running finish and count, then it closes.
+setInterval(() => {
+  const c = cup.current;
+  if (!cup.running || Date.now() < c.endsAt) return;
+  const busy = arenas.some((a) => a.phase === 'playing' && a.cupId === c.id);
+  if (busy && Date.now() < c.endsAt + (MATCH_SECONDS + 60) * 1000) return;
+  finishCup();
+}, 5000);
+
 // ------------------------------------------------------------------ telegram
 
 /** Push changed prize settings to everyone waiting in a lobby (rounds in progress keep theirs). */
@@ -858,27 +961,158 @@ function settingsText() {
   const s = P();
   const shares = s.split.map((p, i) => `${ORDINAL[i]} ${p}% (${money((s.amount * p) / 100, s.currency)})`).join(', ');
   return [
+    cup.running ? '🏆 <b>A cup is running</b>, so rounds play for cup points, not the pot below. /cup for the table.' : '',
     `<b>Prize pot:</b> ${esc(money(s.amount, s.currency))} per prize round`,
     `<b>Split:</b> ${esc(shares)}`,
-    `<b>Prize rounds need:</b> ${s.minPlayers} real players`,
-  ].join('\n');
+    `<b>Prize and cup rounds need:</b> ${s.minPlayers} real players`,
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 const HELP = [
   '<b>SISYPHUS prize bot</b>',
+  '<b>The cup</b> (a leaderboard with prizes for the top places):',
+  '/cup: the cup and its top 5',
+  '/cup start 7d 100 100 100 USDC: start one (ends in 7 days, or 48h, or on a date like 2026-10-30; then the prize for each place)',
+  '/cup prizes 150 100 50: change the prizes while it runs',
+  '/cup ends 3d: change when it ends',
+  '/cup top: the top 15',
+  '/cup end: close it now and pay the top places · /cup cancel: call it off, no prizes',
+  '',
+  '<b>Round prizes</b> (when no cup is running):',
   '/pool: show the pot and split',
-  '/pool 2.5 SOL: set the pot per prize round (or /pool 0 to turn prizes off)',
+  '/pool 50 $: set the pot per prize round (or /pool 0 to turn prizes off)',
   '/split 60 25 15: how the pot is shared between the top places (1 to 3 numbers adding to 100)',
-  '/minplayers 4: real players a round needs to be a prize round',
+  '/minplayers 4: real players a round needs to count',
+  '',
   '/claims: the latest winners and their wallets',
   '/status: who is playing right now',
 ].join('\n');
+
+const CUP_POINTS = `${PLACE_POINTS.map((p, i) => `${ORDINAL[i]} ${p}`).join(', ')}, everyone else above floor ${MIN_PRIZE_FLOOR}: ${CLIMB_POINTS}`;
+const utc = (t) => `${new Date(t).toISOString().replace('T', ' ').slice(0, 16)} UTC`;
+
+function countdown(ms) {
+  const m = Math.max(0, Math.round(ms / 60000));
+  const d = Math.floor(m / 1440);
+  const h = Math.floor((m % 1440) / 60);
+  return d ? `${d}d ${h}h` : h ? `${h}h ${m % 60}m` : `${m % 60}m`;
+}
+
+function cupTable(n) {
+  const rows = cup.standings().slice(0, n);
+  if (!rows.length) return '<i>Nobody has scored yet.</i>';
+  return rows.map((s, i) => `${i + 1}. <b>${esc(s.name)}</b> · ${s.points} pts (${s.wins} win${s.wins === 1 ? '' : 's'}, ${s.rounds} round${s.rounds === 1 ? '' : 's'})`).join('\n');
+}
+
+function cupText() {
+  const c = cup.current;
+  if (!c) return 'No cup yet. Start one with /cup start 7d 100 100 100 USDC';
+  const total = c.prizes.reduce((a, b) => a + b, 0);
+  const state = !c.finishedAt
+    ? Date.now() < c.endsAt
+      ? `running, ends ${utc(c.endsAt)} (in ${countdown(c.endsAt - Date.now())})`
+      : 'closing (waiting for the last rounds to finish)'
+    : `over since ${utc(c.finishedAt)}`;
+  return [
+    `🏆 <b>Cup #${c.id}</b> · ${state}`,
+    `<b>Prizes:</b> ${c.prizes.map((p, i) => `${ORDINAL[i] ?? `${i + 1}th`} ${esc(money(p, c.currency))}`).join(', ')} (total ${esc(money(total, c.currency))})`,
+    `<b>Points per round:</b> ${CUP_POINTS}. Rounds need ${P().minPlayers} real players to count.`,
+    '',
+    cupTable(5),
+  ].join('\n');
+}
+
+/** "7d", "48h", "2026-10-30" (the end of that day, UTC) or "2026-10-30T18:00" (UTC). */
+function parseEnd(s) {
+  const v = String(s ?? '').trim();
+  let t = NaN;
+  let m;
+  if ((m = /^(\d+(?:\.\d+)?)d$/i.exec(v))) t = Date.now() + Number(m[1]) * 86400000;
+  else if ((m = /^(\d+(?:\.\d+)?)h$/i.exec(v))) t = Date.now() + Number(m[1]) * 3600000;
+  else if ((m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v))) t = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + 1);
+  else if ((m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(v))) t = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]));
+  if (!Number.isFinite(t) || t <= Date.now() + 60000 || t > Date.now() + 120 * 86400000) return null;
+  return t;
+}
+
+/** "100 100 100 USDC" or "$150 $100 $50": the prize for each place, then the currency (else `fallback`). */
+function parsePrizes(args, fallback) {
+  const nums = [];
+  let currency = null;
+  for (const a of args) {
+    const n = Number(String(a).replace(/^\$/, ''));
+    if (Number.isFinite(n) && String(a).trim() !== '') {
+      if (n < 0 || n > 1e9) return null;
+      nums.push(n);
+      if (String(a).startsWith('$')) currency ??= '$';
+    } else if (currency === null || currency === '$') currency = String(a).slice(0, 8);
+    else return null;
+  }
+  if (!nums.length || nums.length > MAX_CUP_PLACES) return null;
+  return { prizes: nums, currency: currency ?? fallback };
+}
+
+async function onCupCommand(args) {
+  const [sub = '', ...rest] = args;
+  switch (sub.toLowerCase()) {
+    case '':
+    case 'status':
+      return cupText();
+    case 'top':
+      return cup.current ? `🏆 <b>Cup #${cup.current.id}</b>\n${cupTable(15)}` : 'No cup yet.';
+    case 'start': {
+      if (cup.running) return 'A cup is already running. Change it with /cup prizes or /cup ends, or close it with /cup end.';
+      const endsAt = parseEnd(rest[0]);
+      const p = parsePrizes(rest.slice(1), P().currency);
+      if (!endsAt || !p) return 'Usage: /cup start 7d 100 100 100 USDC\n(when it ends: 7d, 48h or 2026-10-30; then the prize for 1st, 2nd, 3rd…)';
+      cup.start({ endsAt, ...p });
+      // The cup replaces round prizes; zero the pot so they don't quietly come back when it ends.
+      const hadPot = P().amount > 0;
+      if (hadPot) prizes.update({ amount: 0 });
+      announceSettings();
+      return `✅ Cup started. Everyone starts from 0 points.${hadPot ? '\nRound prizes are off now (pot set to 0); /pool turns them back on after the cup.' : ''}\n\n${cupText()}`;
+    }
+    case 'prizes': {
+      if (!cup.running) return 'No cup is running. Start one with /cup start.';
+      const p = parsePrizes(rest, cup.current.currency);
+      if (!p) return 'Usage: /cup prizes 150 100 50 (the prize for 1st, 2nd, 3rd…, then the currency if it changes)';
+      cup.update(p);
+      announceSettings();
+      return `✅ Prizes changed.\n\n${cupText()}`;
+    }
+    case 'ends': {
+      if (!cup.running) return 'No cup is running.';
+      const endsAt = parseEnd(rest[0]);
+      if (!endsAt) return 'Usage: /cup ends 3d (or 48h, or 2026-10-30, or 2026-10-30T18:00 in UTC)';
+      cup.update({ endsAt });
+      announceSettings();
+      return `✅ End time changed.\n\n${cupText()}`;
+    }
+    case 'end': {
+      if (!cup.running) return 'No cup is running.';
+      finishCup();
+      return 'Cup closed. The results are on their way.';
+    }
+    case 'cancel': {
+      if (!cup.current || cup.current.finishedAt) return 'No cup is running.';
+      cup.cancel();
+      announceSettings();
+      return 'Cup called off. Nobody gets a prize and it no longer shows in the game.';
+    }
+    default:
+      return HELP;
+  }
+}
 
 async function onTelegramCommand(name, args) {
   switch (name) {
     case 'start':
     case 'help':
       return `${HELP}\n\n${settingsText()}`;
+    case 'cup':
+      return onCupCommand(args);
     case 'pool': {
       if (!args.length) return settingsText();
       const amount = Number(String(args[0]).replace(/^\$/, ''));
@@ -886,7 +1120,7 @@ async function onTelegramCommand(name, args) {
       const currency = String(args[1] ?? (String(args[0]).startsWith('$') ? '$' : P().currency)).slice(0, 8);
       prizes.update({ amount, currency });
       announceSettings();
-      return `✅ Pot set. Rounds starting from now play for it.\n\n${settingsText()}`;
+      return `✅ Pot set. ${cup.running ? 'It applies once the cup is over.' : 'Rounds starting from now play for it.'}\n\n${settingsText()}`;
     }
     case 'split': {
       const split = args.map(Number);
@@ -912,7 +1146,7 @@ async function onTelegramCommand(name, args) {
         .join('\n\n');
     }
     case 'status': {
-      const lines = arenas.map((a) => `${esc(a.code)} · ${esc(MAP_NAMES[a.map] ?? a.map)} · ${a.phase} · ${a.clients.size} player${a.clients.size === 1 ? '' : 's'}${prizeRound(a) ? ' · prize round' : ''}`);
+      const lines = arenas.map((a) => `${esc(a.code)} · ${esc(MAP_NAMES[a.map] ?? a.map)} · ${a.phase} · ${a.clients.size} player${a.clients.size === 1 ? '' : 's'}${prizeRound(a) ? ' · prize round' : cupRound(a) ? ' · cup round' : ''}`);
       return `<b>${wss.clients.size} online</b>\n${lines.join('\n') || 'No public rounds running.'}`;
     }
     default:
@@ -925,6 +1159,7 @@ const telegram = new TelegramBot({
   admins: String(env.TELEGRAM_ADMIN_IDS ?? '').split(',').map((s) => s.trim()),
   onCommand: onTelegramCommand,
   commands: [
+    { command: 'cup', description: 'The cup: start, prizes, ends, top, end' },
     { command: 'pool', description: 'Show or set the prize pot' },
     { command: 'split', description: 'How the pot is shared (e.g. 60 25 15)' },
     { command: 'minplayers', description: 'Real players a prize round needs' },

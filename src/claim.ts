@@ -1,16 +1,22 @@
 import { apiUrl } from './endpoint';
-import { ORDINAL } from './money';
+import { ordinal } from './money';
+import { playerSecret } from './net';
 
-/** A prize this browser won in a prize round. Kept a week, so it can still be claimed later. */
+/** A prize this browser won in a prize round or the cup. Kept a while, so it can still be claimed later. */
 export interface Prize {
-  /** One-time secret from the server that proves this browser placed. */
+  /** One-time secret from the server that proves this browser placed ('' for a cup prize). */
   token: string;
+  /** Cup prizes: the claim's number (this browser's own secret proves it's theirs). */
+  cup?: boolean;
+  id?: number;
+  /** Cup prizes: the points that won it. */
+  points?: number;
   place: number;
   share: number;
   /** The amount, formatted ("1.5 SOL"). */
   label: string;
-  pot: string;
-  map: string;
+  pot?: string;
+  map?: string;
   at: number;
   /** The address sent in, once it's been accepted. */
   wallet?: string;
@@ -20,16 +26,21 @@ export interface Prize {
 
 const KEY = 'sisyphus.prizes.v1';
 const TTL_MS = 7 * 24 * 3600 * 1000;
+/** Matches the server: cup winners get a month to claim. */
+const CUP_TTL_MS = 30 * 24 * 3600 * 1000;
 /** Matches the server: an address can be corrected for 15 minutes, then it's final. */
 const EDIT_MS = 15 * 60 * 1000;
 const $ = (id: string) => document.getElementById(id)!;
 const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
 const short = (w: string) => `${w.slice(0, 4)}…${w.slice(-4)}`;
 
+/** Names one prize (round prizes by their token, cup prizes by their claim number). */
+export const prizeKey = (p: Prize): string => (p.cup ? `cup:${p.id}` : p.token);
+
 function load(): Prize[] {
   try {
     const list = JSON.parse(localStorage.getItem(KEY) ?? '[]') as Prize[];
-    return Array.isArray(list) ? list.filter((p) => p && typeof p.token === 'string' && Date.now() - p.at < TTL_MS) : [];
+    return Array.isArray(list) ? list.filter((p) => p && typeof p.token === 'string' && Date.now() - p.at < (p.cup ? CUP_TTL_MS : TTL_MS)) : [];
   } catch {
     return [];
   }
@@ -53,7 +64,7 @@ export function walletProblem(text: string): string | null {
   return null;
 }
 
-/** The prize page: someone who placed in a prize round sends the Solana address for their prize. */
+/** The prize page: someone who placed in a prize round or the cup sends the Solana address for their prize. */
 export class Claims {
   /** Something changed (a new prize, a wallet sent): refresh the "claim your prize" buttons. */
   onChange: () => void = () => {};
@@ -86,24 +97,29 @@ export class Claims {
     return !$('claim').classList.contains('hidden');
   }
 
-  /** The server says we placed: keep the prize and ask for the wallet straight away. */
+  /**
+   * The server says we placed: keep the prize and ask for the wallet straight away. (A cup prize
+   * is sent again on every visit until it's claimed; only the first time opens the page.)
+   */
   won(p: Prize): void {
-    store([...load().filter((q) => q.token !== p.token), p]);
-    this.open(p.token);
+    const key = prizeKey(p);
+    const known = load().some((q) => prizeKey(q) === key);
+    store([...load().filter((q) => prizeKey(q) !== key), p]);
+    if (!known) this.open(key);
     this.onChange();
   }
 
   /** Show a prize (the newest unclaimed one if none is named). */
-  open(token?: string): void {
-    const p = token ? load().find((q) => q.token === token) : this.unclaimed()[0];
+  open(key?: string): void {
+    const p = key ? load().find((q) => prizeKey(q) === key) : this.unclaimed()[0];
     if (!p) return;
     this.current = p;
     const badge = $('claimBadge');
-    badge.textContent = (ORDINAL[p.place - 1] ?? `#${p.place}`).toUpperCase();
+    badge.textContent = ordinal(p.place).toUpperCase();
     badge.dataset.place = String(p.place);
-    $('claimTitle').textContent = p.place === 1 ? 'YOU WON!' : `${(ORDINAL[p.place - 1] ?? '').toUpperCase()} PLACE!`;
+    $('claimTitle').textContent = p.place === 1 ? 'YOU WON!' : `${ordinal(p.place).toUpperCase()} PLACE!`;
     $('claimPrize').innerHTML = `Your prize: <b>${esc(p.label)}</b>`;
-    $('claimSub').textContent = `${p.share}% of the ${p.pot} pot`;
+    $('claimSub').textContent = p.cup ? `${ordinal(p.place)} in the cup with ${p.points} points` : `${p.share}% of the ${p.pot} pot`;
     $('claimStatus').textContent = '';
     this.input.value = p.wallet ?? '';
     this.showForm(!p.wallet);
@@ -146,7 +162,7 @@ export class Claims {
       const res = await fetch(apiUrl('/api/claim'), {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ token: p.token, wallet }),
+        body: JSON.stringify(p.cup ? { claim: p.id, secret: playerSecret(), wallet } : { token: p.token, wallet }),
       });
       const body = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
       if (!res.ok || !body.ok) {
@@ -155,7 +171,7 @@ export class Claims {
       }
       p.wallet = wallet;
       p.walletAt ??= Date.now();
-      store(load().map((q) => (q.token === p.token ? { ...q, wallet, walletAt: p.walletAt } : q)));
+      store(load().map((q) => (prizeKey(q) === prizeKey(p) ? { ...q, wallet, walletAt: p.walletAt } : q)));
       $('claimStatus').textContent = '';
       this.showForm(false);
       this.onChange();

@@ -129,7 +129,7 @@
           <li>The <b>orange weapon racks</b> on every level hold better guns (Shotgun, Rocket, Railgun, Freeze ray) and melee weapons. They refill. The two by the start always hold a Rocket or a Railgun, so it's a race.</li>
           <li>Supply drops parachute in through the round: a weapon plus a trap.</li>
           <li>Grab the flag at the top and <b>hold it for 3 seconds</b> to win. Whoever holds the flag is harder to knock away, but a real knockdown makes them drop it.</li>
-          <li><b>PLAY ONLINE</b> drops you into the next public round (up to 24 players, bots fill the gaps). Rounds with enough real players are <b>prize rounds</b>.</li>
+          <li><b>PLAY ONLINE</b> drops you into the next public round (up to 24 players, bots fill the gaps). Rounds with enough real players are <b>prize rounds</b>, or count for <b>the cup</b> when one is on: score points by finishing high, and the top of the leaderboard wins when it ends.</li>
           <li><b>Play with friends</b>: make a room and send the code or invite link.</li>
         </ol>
         <div class="controls">
@@ -225,8 +225,18 @@
       <div class="panel sheet">
         <button class="closeX" data-close="leaderboard" aria-label="Close">✕</button>
         <h2>LEADERBOARD</h2>
+        <div id="leaderTabs" class="leaderTabs hidden" role="tablist">
+          <button data-tab="cup" class="on" role="tab">THE CUP</button>
+          <button data-tab="all" role="tab">ALL-TIME WINS</button>
+        </div>
+        <div id="cupHead" class="cupHead hidden">
+          <div id="cupClock" class="cupClock"></div>
+          <div id="cupPrizes" class="cupPrizes"></div>
+          <p id="cupRules" class="cupRules"></p>
+          <p id="cupYou" class="cupYou hidden"></p>
+        </div>
         <ol id="leaderList" class="leaderList"></ol>
-        <p class="hint">Most wins in public rounds.</p>
+        <p id="leaderHint" class="hint">Most wins in public rounds.</p>
       </div>
     </div>
 

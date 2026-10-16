@@ -23,7 +23,7 @@ import { Hud } from './hud';
 import { Input } from './input';
 import { Lobby } from './lobby';
 import { Locker } from './locker';
-import { money, ORDINAL } from './money';
+import { money, ORDINAL, ordinal } from './money';
 import { Net, type RosterEntry } from './net';
 import { PlayerController } from './player';
 import { loadRecords, loadSettings, saveRecords, saveSettings, type Records, type Settings } from './prefs';
@@ -57,9 +57,23 @@ interface RoundResult {
   disqualified: boolean;
   /** Paid places in a prize round, in finishing order. */
   places?: { place: number; name: string; share: number; label: string }[];
+  /** The round counted for the cup; its top scorers. */
+  cupRound?: boolean;
+  cupTop?: { name: string; points: number }[];
 }
 
-function prizeLine(r: RoundResult): string {
+/** Your cup points from the round just over (sent to you alone, before the result). */
+interface CupGain {
+  points: number;
+  rank?: number;
+}
+
+function prizeLine(r: RoundResult, gain: CupGain | null): string {
+  if (r.cupRound) {
+    const top = (r.cupTop ?? []).map((p, i) => `${ORDINAL[i]} ${p.name} +${p.points}`).join(' · ');
+    const mine = gain ? ` You: +${gain.points}${gain.rank ? `, ${ordinal(gain.rank)} in the cup` : ''}.` : ' You: no points this round.';
+    return top ? `Cup points: ${top}.${mine}` : `Nobody climbed high enough for cup points.${mine}`;
+  }
   if (!r.prizeRound) return '';
   const places = r.places ?? [];
   const flagged = r.disqualified ? ' The winner was flagged for impossible movement, so the prize skipped them.' : '';
@@ -115,6 +129,8 @@ export class Game {
   private readonly director: Director;
   readonly home: Home;
   readonly claims: Claims;
+  /** Cup points from the online round that just ended. */
+  private cupGain: CupGain | null = null;
   readonly lobby: Lobby;
   settings: Settings;
   records: Records;
@@ -656,7 +672,11 @@ export class Game {
 
   private wireNet(): void {
     const net = this.net;
-    net.on('start', (m) => void this.startOnline(m.at, m.roster as RosterEntry[], m.map as MapId | undefined, m.flag, m.crates));
+    net.on('cupGain', (m) => (this.cupGain = { points: Number(m.points), rank: Number(m.rank) || undefined }));
+    net.on('start', (m) => {
+      this.cupGain = null;
+      void this.startOnline(m.at, m.roster as RosterEntry[], m.map as MapId | undefined, m.flag, m.crates);
+    });
     net.on('s', (m) => {
       if (this.mode !== 'online') return;
       (m.d as (string | number)[][]).forEach((e, i) => {
@@ -679,7 +699,9 @@ export class Game {
     net.on('crate', (m) => this.mode === 'online' && this.airdrops.spawnAt(m.id, m.spot, !!m.rack));
     net.on('gone', (m) => this.mode === 'online' && this.airdrops.taken(m.id, this.charByNet.get(m.who) ?? null, m.weapon, m.trap));
     net.on('prize', (m) => {
-      this.claims.won({ token: String(m.token), place: Number(m.place), share: Number(m.share), label: String(m.label), pot: String(m.pot), map: String(m.map), at: Number(m.at) || Date.now() });
+      const at = Number(m.at) || Date.now();
+      if (m.cup) this.claims.won({ token: '', cup: true, id: Number(m.id), points: Number(m.points), place: Number(m.place), share: Number(m.share), label: String(m.label), at });
+      else this.claims.won({ token: String(m.token), place: Number(m.place), share: Number(m.share), label: String(m.label), pot: String(m.pot), map: String(m.map), at });
     });
     net.on('win', (m) => {
       if (this.mode !== 'online' || (this.state !== 'playing' && this.state !== 'paused')) return;
@@ -1079,7 +1101,8 @@ export class Game {
       : c?.isPlayer
         ? 'Flag captured. Nobody could stop you.'
         : 'They held the flag for 3 seconds.';
-    this.showEnd(title, result ? `${sub} ${prizeLine(result)}` : sub);
+    this.showEnd(title, result ? `${sub} ${prizeLine(result, this.cupGain)}` : sub);
+    this.cupGain = null;
   }
 
   private timeUp(): void {

@@ -13,6 +13,8 @@ export interface MyWins {
   wins: number;
   rounds: number;
   recent: { at: number; prizeRound: boolean; reason: string }[];
+  /** Your place in the cup, if you've scored in it. */
+  cup?: { rank: number; points: number; wins: number } | null;
 }
 
 /**
@@ -169,17 +171,31 @@ export class Lobby {
     const room = this.game.net.room;
     if (!room || !room.public) return;
     const n = room.players.length;
-    $('arenaTitle').textContent = room.prizeRound ? 'PRIZE ROUND' : 'WARM-UP ROUND';
-    const split = room.split ?? [100];
-    const prize =
-      split.length > 1
-        ? `${money(room.prize, room.currency)} pot · the top ${split.length} get paid (${split.join('/')})`
-        : `${money(room.prize, room.currency)} to whoever holds the flag`;
-    if (room.phase === 'lobby') {
-      $('arenaPrize').textContent = room.prizeRound ? prize : `Prize rounds need ${room.minPlayers} players — ${Math.max(0, room.minPlayers - n)} more to go`;
+    const cup = room.cup;
+    if (room.cupRound || cup?.open) {
+      // A cup is on: rounds with enough players give points instead of a prize of their own.
+      const total = money(cup ? cup.prizes.reduce((a, b) => a + b, 0) : 0, cup?.currency ?? room.currency);
+      $('arenaTitle').textContent = room.cupRound ? 'CUP ROUND' : 'WARM-UP ROUND';
+      if (room.cupRound) $('arenaPrize').textContent = `Points count toward the ${total} cup · finish high to score`;
+      else if (room.phase === 'lobby') $('arenaPrize').textContent = `Cup rounds need ${room.minPlayers} players — ${Math.max(0, room.minPlayers - n)} more to go`;
+      else $('arenaPrize').textContent = 'This one’s a warm-up — no cup points this round';
     } else {
-      // The prize is settled when a round starts; joining partway doesn't change it.
-      $('arenaPrize').textContent = room.prizeRound ? prize : 'This one’s a warm-up — no prize this round';
+      $('arenaTitle').textContent = room.prizeRound ? 'PRIZE ROUND' : 'WARM-UP ROUND';
+      const split = room.split ?? [100];
+      const prize =
+        split.length > 1
+          ? `${money(room.prize, room.currency)} pot · the top ${split.length} get paid (${split.join('/')})`
+          : `${money(room.prize, room.currency)} to whoever holds the flag`;
+      if (room.phase === 'lobby') {
+        $('arenaPrize').textContent = room.prizeRound
+          ? prize
+          : room.prize > 0
+            ? `Prize rounds need ${room.minPlayers} players — ${Math.max(0, room.minPlayers - n)} more to go`
+            : 'Just for fun this round';
+      } else {
+        // The prize is settled when a round starts; joining partway doesn't change it.
+        $('arenaPrize').textContent = room.prizeRound ? prize : 'This one’s a warm-up — no prize this round';
+      }
     }
     if (room.map) $('arenaMap').innerHTML = `${room.phase === 'playing' ? 'Now on' : 'Next map'}: <b>${esc(mapName(room.map))}</b>`;
     $('arenaCount').textContent = `${n} player${n === 1 ? '' : 's'} here · bots fill the empty spots`;

@@ -29,7 +29,24 @@ export interface RoomInfo {
   minPlayers: number;
   /** Enough real players for the prize to be on. */
   prizeRound: boolean;
+  /** This round counts for the cup (a cup is on and there are enough real players). */
+  cupRound?: boolean;
+  cup?: CupSummary | null;
   players: RoomPlayer[];
+}
+
+/** The cup: a leaderboard with prizes for the top places, run for a set time. */
+export interface CupSummary {
+  id: number;
+  /** Still taking points. */
+  running: boolean;
+  /** New rounds can still count (until the end time). */
+  open: boolean;
+  /** Seconds until it ends. */
+  endsIn: number;
+  /** The prize for 1st, 2nd, 3rd… */
+  prizes: number[];
+  currency: string;
 }
 
 /** Stable anonymous identity: a random secret kept in this browser (the server only sees a hash). */

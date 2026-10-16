@@ -1440,6 +1440,114 @@ button:active {
   color: #ffe14d;
   font-family: 'Titan One', 'Rubik', sans-serif;
 }
+.leaderList li.paid {
+  background: rgba(255, 225, 77, 0.14);
+  box-shadow: inset 4px 0 0 #ffe14d;
+}
+.leaderList li.me {
+  outline: 2px solid #3ec1ff;
+  outline-offset: -2px;
+}
+.leaderList .pname {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.leaderTabs {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin: -4px 0 14px;
+}
+.leaderTabs button {
+  margin: 0;
+  padding: 7px 16px;
+  border-width: 2px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff7ea;
+  font-size: 14px;
+  box-shadow: none;
+}
+.leaderTabs button.on {
+  background: #ffe14d;
+  color: #2c2633;
+}
+.cupHead {
+  margin: 0 0 12px;
+  padding: 14px 16px;
+  border: 2px solid rgba(255, 225, 77, 0.45);
+  border-radius: 16px;
+  background: rgba(255, 225, 77, 0.08);
+  text-align: center;
+}
+.cupClock {
+  font: 800 13px 'Rubik', sans-serif;
+  letter-spacing: 2px;
+  opacity: 0.9;
+}
+.cupClock b {
+  color: #ffe14d;
+  font-size: 18px;
+  letter-spacing: 0.5px;
+}
+.cupPrizes {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin: 10px 0 8px;
+}
+.cupPrize {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: #2c2633;
+  color: #ffe14d;
+  font: 400 18px 'Titan One', 'Rubik', sans-serif;
+}
+.cupPrize i {
+  color: #fff7ea;
+  font: 800 12px 'Rubik', sans-serif;
+  font-style: normal;
+  opacity: 0.8;
+}
+.cupRules {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  opacity: 0.8;
+}
+.cupYou {
+  margin: 8px 0 0;
+  font-size: 15px;
+}
+.cupYou b {
+  color: #8be86a;
+}
+@media (max-width: 520px) {
+  .leaderTabs button {
+    padding: 6px 10px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .cupHead {
+    padding: 12px 10px;
+  }
+  .cupPrizes {
+    gap: 6px;
+  }
+  .cupPrize {
+    gap: 4px;
+    padding: 3px 9px;
+    font-size: 14px;
+  }
+  .cupPrize i {
+    font-size: 10px;
+  }
+}
 .leaderList b {
   color: #8be86a;
   font-size: 18px;

@@ -92,13 +92,13 @@ export class Hud {
     this.mapEl.classList.remove('show');
   }
 
-  /** Public rounds: the prize on offer, under the timer. */
-  setPrize(room: { prizeRound: boolean; prize: number; currency: string; minPlayers: number } | null): void {
+  /** Public rounds: the prize on offer (or that it counts for the cup), under the timer. */
+  setPrize(room: { prizeRound: boolean; prize: number; currency: string; minPlayers: number; cupRound?: boolean } | null): void {
     const el = document.getElementById('prizeBadge')!;
     el.classList.toggle('hidden', !room);
     if (!room) return;
-    el.textContent = room.prizeRound ? `${money(room.prize, room.currency)} PRIZE ROUND` : 'WARM-UP ROUND';
-    el.classList.toggle('warmup', !room.prizeRound);
+    el.textContent = room.cupRound ? 'CUP ROUND · POINTS COUNT' : room.prizeRound ? `${money(room.prize, room.currency)} PRIZE ROUND` : 'WARM-UP ROUND';
+    el.classList.toggle('warmup', !room.prizeRound && !room.cupRound);
   }
 
   update(): void {

@@ -1,6 +1,7 @@
 // Prize rounds: the pot and how it's split (changed from Telegram), who placed, and the wallet
-// addresses winners send in. Paying is done by hand by whoever runs the server; nothing here
-// moves money. Kept in DATA_DIR/prizes.json, written atomically (temp file + rename).
+// addresses winners send in, for round prizes and for the cup's prize places (cup.mjs). Paying is
+// done by hand by whoever runs the server; nothing here moves money. Kept in
+// DATA_DIR/prizes.json, written atomically (temp file + rename).
 
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -9,6 +10,8 @@ import path from 'node:path';
 const MAX_CLAIMS = 1000;
 /** A winner has this long to send their wallet address. */
 const CLAIM_TTL_MS = 7 * 24 * 3600 * 1000;
+/** Cup winners may not be around the moment it ends, so they get longer. */
+const CUP_CLAIM_TTL_MS = 30 * 24 * 3600 * 1000;
 /** How long after first sending it a winner can still correct their address. */
 const WALLET_EDIT_MS = 15 * 60 * 1000;
 const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
@@ -101,12 +104,56 @@ export class Prizes {
     return out;
   }
 
-  /** A winner sent their wallet. Returns { claim, updated } or { error }. */
+  /**
+   * The cup is over: one claim per prize place. There's no link to hand out: the winner claims
+   * it from the browser that earned the points (its secret is the proof, see pendingFor).
+   */
+  awardCup(cup, top) {
+    const total = cup.prizes.reduce((a, b) => a + b, 0);
+    const out = top.map((s, i) => ({
+      id: this.data.nextId++,
+      at: Date.now(),
+      kind: 'cup',
+      cupId: cup.id,
+      place: i + 1,
+      name: s.name,
+      pid: s.pid,
+      points: s.points,
+      share: total > 0 ? Math.round((cup.prizes[i] / total) * 1000) / 10 : 0,
+      amount: cup.prizes[i],
+      currency: cup.currency,
+      tokenHash: null,
+      wallet: null,
+      walletAt: 0,
+    }));
+    this.data.claims.push(...out);
+    if (this.data.claims.length > MAX_CLAIMS) this.data.claims.splice(0, this.data.claims.length - MAX_CLAIMS);
+    this.save();
+    return out;
+  }
+
+  /** Cup prizes this player won that still need a wallet. */
+  pendingFor(pid) {
+    return this.data.claims.filter((c) => c.kind === 'cup' && c.pid === pid && !c.wallet && Date.now() - c.at < CUP_CLAIM_TTL_MS);
+  }
+
+  /** A round winner sent their wallet with their prize link. Returns { claim, updated } or { error }. */
   submit(token, wallet) {
     if (typeof token !== 'string' || token.length < 20 || token.length > 64) return { error: 'That prize link is not valid.' };
-    const claim = this.data.claims.find((c) => c.tokenHash === hashToken(token));
+    const claim = this.data.claims.find((c) => c.tokenHash && c.tokenHash === hashToken(token));
     if (!claim) return { error: 'That prize link is not valid.' };
-    if (Date.now() - claim.at > CLAIM_TTL_MS) return { error: 'This prize has expired.' };
+    return this.setWallet(claim, wallet, CLAIM_TTL_MS);
+  }
+
+  /** A cup winner sent their wallet, from the browser that won (`pid` comes from its secret). */
+  submitCup(pid, id, wallet) {
+    const claim = this.data.claims.find((c) => c.kind === 'cup' && c.id === id);
+    if (!claim || !pid || claim.pid !== pid) return { error: 'This prize belongs to another player.' };
+    return this.setWallet(claim, wallet, CUP_CLAIM_TTL_MS);
+  }
+
+  setWallet(claim, wallet, ttl) {
+    if (Date.now() - claim.at > ttl) return { error: 'This prize has expired.' };
     if (!isSolanaAddress(wallet)) return { error: 'That is not a Solana wallet address.' };
     const updated = !!claim.wallet && claim.wallet !== wallet;
     if (claim.wallet === wallet) return { claim, updated: false, same: true };

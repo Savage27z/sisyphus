@@ -1,14 +1,26 @@
+import { prizeKey } from './claim';
 import { CONFIG } from './config';
 import { apiUrl } from './endpoint';
 import type { Game } from './game';
+import type { MyWins } from './lobby';
 import { MAPS, renderMapCards } from './maps';
-import { isSymbol, ORDINAL } from './money';
+import { isSymbol, money, ordinal } from './money';
+import type { CupSummary } from './net';
 import { goLandscape } from './touch';
 
 const $ = (id: string) => document.getElementById(id)!;
 const SHEETS = ['howto', 'records', 'settings', 'credits', 'leaderboard', 'mywins', 'practice'];
 const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+/** "3d 04h", "5h 12m", "12m 30s" */
+function untilEnd(s: number): string {
+  const t = Math.max(0, Math.floor(s));
+  const d = Math.floor(t / 86400);
+  const h = Math.floor((t % 86400) / 3600);
+  const m = Math.floor((t % 3600) / 60);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return d ? `${d}d ${pad(h)}h` : h ? `${h}h ${pad(m)}m` : `${m}m ${pad(t % 60)}s`;
+}
 /** Player chip colours, picked by outfit so the chip changes with the locker. */
 const CHIP_COLORS = ['#ff6f91', '#3ec1ff', '#ffc23d', '#6fdc8c', '#b08cff', '#ff8a3d', '#4fe0c8', '#8fa8ff'];
 
@@ -26,7 +38,17 @@ interface PublicStats {
   currency: string;
   split?: number[];
   minPlayers: number;
+  cup?: CupSummary | null;
   arenas: ArenaStat[];
+}
+
+interface CupView extends CupSummary {
+  rows: { name: string; points: number; wins: number }[];
+}
+interface Board {
+  top: { name: string; wins: number; rounds: number }[];
+  cup: CupView | null;
+  rules?: { places: number[]; climb: number; minFloor: number; minPlayers: number };
 }
 
 /** The home page: player chip, menu, PLAY with the prize, live player count and round clock, sheets. */
@@ -35,6 +57,10 @@ export class Home {
   private statsTimer: number | null = null;
   private lastStats: PublicStats | null = null;
   private statsAt = 0;
+  private board: Board | null = null;
+  private boardAt = 0;
+  private boardTab: 'cup' | 'all' = 'cup';
+  private myCup: MyWins['cup'] = null;
 
   constructor(private readonly game: Game) {
     $('playOnlineBtn').addEventListener('click', () => game.lobby.playOnline());
@@ -64,6 +90,12 @@ export class Home {
       this.openSheet('leaderboard');
       void this.renderLeaderboard();
     });
+    document.querySelectorAll<HTMLElement>('#leaderTabs [data-tab]').forEach((b) =>
+      b.addEventListener('click', () => {
+        this.boardTab = b.dataset.tab === 'all' ? 'all' : 'cup';
+        this.drawBoard();
+      }),
+    );
     $('winsBtn').addEventListener('click', () => {
       this.openSheet('mywins');
       void this.renderMyWins();
@@ -104,9 +136,11 @@ export class Home {
     invert.addEventListener('change', () => game.updateSettings({ invertY: invert.checked }));
     this.refresh();
     this.pollStats();
-    // Tick the round clock between fetches.
+    // Tick the round clock (and the cup's) between fetches.
     window.setInterval(() => {
-      if (!this.el.classList.contains('hidden')) this.renderStats();
+      if (this.el.classList.contains('hidden')) return;
+      this.renderStats();
+      if (!$('leaderboard').classList.contains('hidden')) this.tickCupClock();
     }, 1000);
   }
 
@@ -154,46 +188,131 @@ export class Home {
   private renderStats(): void {
     const s = this.lastStats;
     $('liveLine').classList.toggle('offline', !s);
+    const elapsed = (performance.now() - this.statsAt) / 1000;
+    this.renderCupLine(s?.cup ?? null, elapsed);
     if (!s) {
-      this.renderPot(25, '$', [100]);
+      this.renderPot(0, '$', [100]);
       $('homeOnline').textContent = "Can't reach the server";
       $('homeRound').textContent = 'Practice still works';
       return;
     }
-    this.renderPot(s.prize, s.currency, s.split ?? [100]);
+    if (s.cup?.running) this.renderCupSticker(s.cup);
+    else this.renderPot(s.prize, s.currency, s.split ?? [100]);
     $('homeOnline').textContent = `${s.online} here now`;
-    const elapsed = (performance.now() - this.statsAt) / 1000;
     const a = [...(s.arenas ?? [])].sort((x, y) => y.humans - x.humans)[0];
     let line: string;
-    if (!a) line = `Prize rounds at ${s.minPlayers}+ players`;
+    if (!a) line = s.cup?.open ? `Cup rounds at ${s.minPlayers}+ players` : s.prize > 0 ? `Prize rounds at ${s.minPlayers}+ players` : 'Bots fill the empty spots';
     else if (a.phase === 'playing' && a.endsIn !== null) line = `Round ends in ${clock(Math.max(0, a.endsIn - elapsed))}`;
     else if (a.phase === 'lobby' && a.startsIn !== null) line = `Next round in ${clock(Math.max(0, a.startsIn - elapsed))}`;
     else line = 'Next round starting soon';
     $('homeRound').textContent = line;
   }
 
-  /** The sticker on PLAY: "WIN $25", or "POT 2.5 SOL" when the top places share it. */
+  /** The sticker on PLAY: "WIN $25", or "POT 2.5 SOL" when the top places share it (hidden with no prize). */
   private renderPot(amount: number, currency: string, split: number[]): void {
+    this.renderSticker(split.length > 1 ? 'POT' : 'WIN', amount, currency);
+  }
+
+  /** While a cup runs the sticker shows everything it pays out. */
+  private renderCupSticker(cup: CupSummary): void {
+    this.renderSticker('CUP', cup.prizes.reduce((a, b) => a + b, 0), cup.currency);
+  }
+
+  private renderSticker(top: string, amount: number, currency: string): void {
+    document.querySelector('.prizeBurst')!.classList.toggle('hidden', !(amount > 0));
     const n = String(Math.round(amount * 1e4) / 1e4);
     const symbol = isSymbol(currency);
-    $('homePrizeTop').textContent = split.length > 1 ? 'POT' : 'WIN';
+    $('homePrizeTop').textContent = top;
     $('homePrize').textContent = symbol ? `${currency}${n}` : n;
     $('homePrizeUnit').textContent = symbol ? '' : currency;
     $('homePrize').classList.toggle('long', (symbol ? n.length + 1 : n.length) > 4);
   }
 
+  /** Under PLAY: how long the cup has left (or the usual line when there's no cup). */
+  private renderCupLine(cup: CupSummary | null, elapsed: number): void {
+    const sub = document.querySelector('#playOnlineBtn .goSub')!;
+    if (!cup?.running) {
+      sub.textContent = 'PUBLIC ROUND · UP TO 24 CLIMBERS';
+      return;
+    }
+    const left = cup.endsIn - elapsed;
+    sub.textContent = left > 0 ? `CUP ENDS IN ${untilEnd(left).toUpperCase()} · TOP ${cup.prizes.length} WIN` : 'CUP CLOSING · LAST ROUNDS';
+  }
+
   private async renderLeaderboard(): Promise<void> {
     const list = $('leaderList');
+    $('leaderTabs').classList.add('hidden');
+    $('cupHead').classList.add('hidden');
     list.innerHTML = '<li class="dim">Loading…</li>';
     try {
       const res = await fetch(apiUrl('/api/leaderboard'), { cache: 'no-store' });
-      const { top } = (await res.json()) as { top: { name: string; wins: number; rounds: number }[] };
-      list.innerHTML = top.length
-        ? top.map((p, i) => `<li><span class="rank">${i + 1}</span><span class="pname">${esc(p.name)}</span><b>${p.wins}</b><span class="dim">win${p.wins === 1 ? '' : 's'}</span></li>`).join('')
-        : '<li class="dim">No winners yet — be the first.</li>';
+      this.board = (await res.json()) as Board;
+      this.boardAt = performance.now();
     } catch {
+      this.board = null;
       list.innerHTML = '<li class="dim">Leaderboard is unavailable offline.</li>';
+      $('leaderHint').textContent = '';
+      return;
     }
+    this.boardTab = this.board.cup ? 'cup' : 'all';
+    this.myCup = null;
+    this.drawBoard();
+    // Where you stand: asked over the game's own connection, which knows this browser.
+    if (this.board.cup) {
+      const me = await this.game.lobby.fetchMe();
+      this.myCup = me?.cup ?? null;
+      if (this.boardTab === 'cup') this.drawBoard();
+    }
+  }
+
+  /** The cup table (when there is a cup) or the all-time wins. */
+  private drawBoard(): void {
+    const d = this.board;
+    if (!d) return;
+    const list = $('leaderList');
+    const cup = d.cup;
+    $('leaderTabs').classList.toggle('hidden', !cup);
+    document.querySelectorAll<HTMLElement>('#leaderTabs [data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === this.boardTab));
+    const showCup = !!cup && this.boardTab === 'cup';
+    $('cupHead').classList.toggle('hidden', !showCup);
+    if (!cup || !showCup) {
+      list.innerHTML = d.top.length
+        ? d.top.map((p, i) => `<li><span class="rank">${i + 1}</span><span class="pname">${esc(p.name)}</span><b>${p.wins}</b><span class="dim">win${p.wins === 1 ? '' : 's'}</span></li>`).join('')
+        : '<li class="dim">No winners yet — be the first.</li>';
+      $('leaderHint').textContent = 'Most wins in public rounds, all time.';
+      return;
+    }
+    const r = d.rules ?? { places: [10, 6, 4], climb: 1, minFloor: 3, minPlayers: 4 };
+    $('cupPrizes').innerHTML = cup.prizes.map((p, i) => `<span class="cupPrize"><i>${ordinal(i + 1)}</i>${esc(money(p, cup.currency))}</span>`).join('');
+    $('cupRules').textContent =
+      `Points each cup round: ${r.places.map((p, i) => `${ordinal(i + 1)} ${p}`).join(' · ')} · everyone else above floor ${r.minFloor} gets ${r.climb}. ` +
+      `Cup rounds need ${r.minPlayers}+ players.`;
+    const me = this.myCup;
+    $('cupYou').innerHTML = me
+      ? `You’re <b>${ordinal(me.rank)}</b> with <b>${me.points}</b> pts${me.rank <= cup.prizes.length ? ' — in the prizes!' : ''}`
+      : cup.running
+        ? 'You haven’t scored yet. Finish a cup round in the top 3, or above floor 3.'
+        : '';
+    $('cupYou').classList.toggle('hidden', !$('cupYou').innerHTML);
+    this.tickCupClock();
+    list.innerHTML = cup.rows.length
+      ? cup.rows
+          .map((p, i) => {
+            const cls = [i < cup.prizes.length ? 'paid' : '', me?.rank === i + 1 ? 'me' : ''].filter(Boolean).join(' ');
+            return `<li${cls ? ` class="${cls}"` : ''}><span class="rank">${i + 1}</span><span class="pname">${esc(p.name)}</span><b>${p.points}</b><span class="dim">pts</span></li>`;
+          })
+          .join('')
+      : '<li class="dim">No points yet — be the first on the board.</li>';
+    $('leaderHint').textContent = cup.running
+      ? 'Points are saved in this browser, so keep playing on the same one. When the cup ends, the winners claim their prize right here in the game.'
+      : 'Final table. Winners: your prize is waiting in MY WINS.';
+  }
+
+  private tickCupClock(): void {
+    const cup = this.board?.cup;
+    if (!cup) return;
+    const left = cup.endsIn - (performance.now() - this.boardAt) / 1000;
+    $('cupClock').innerHTML = !cup.running ? 'THE CUP IS OVER' : left > 0 ? `ENDS IN <b>${untilEnd(left)}</b>` : 'LAST ROUNDS — RESULTS SOON';
   }
 
   private async renderMyWins(): Promise<void> {
@@ -207,10 +326,12 @@ export class Home {
       list.innerHTML = '<li class="dim">Couldn’t reach the game server.</li>';
       return;
     }
-    body.innerHTML = [
+    const tiles: [string, string][] = [
       ['Public wins', String(me.wins)],
       ['Rounds played', String(me.rounds)],
-    ]
+    ];
+    if (me.cup) tiles.push([`In the cup · ${me.cup.points} pts`, ordinal(me.cup.rank)]);
+    body.innerHTML = tiles
       .map(([label, value]) => `<div class="stat"><b>${value}</b>${label}</div>`)
       .join('');
     list.innerHTML = me.recent.length
@@ -225,17 +346,18 @@ export class Home {
     box.classList.toggle('hidden', !prizes.length);
     box.innerHTML = prizes
       .map((p) => {
-        const what = `<b>${ORDINAL[p.place - 1] ?? `#${p.place}`}</b> · ${esc(p.label)} · ${esc(MAPS.find((m) => m.id === p.map)?.name ?? p.map)}`;
+        const where = p.cup ? 'The cup' : (MAPS.find((m) => m.id === p.map)?.name ?? p.map ?? '');
+        const what = `<b>${ordinal(p.place)}</b> · ${esc(p.label)} · ${esc(where)}`;
         const action = p.wallet
           ? `<span class="dim">sent to ${esc(p.wallet.slice(0, 4))}…${esc(p.wallet.slice(-4))}</span>`
-          : `<button class="claimBtn small" data-token="${esc(p.token)}">CLAIM</button>`;
+          : `<button class="claimBtn small" data-key="${esc(prizeKey(p))}">CLAIM</button>`;
         return `<li>${what}${action}</li>`;
       })
       .join('');
-    box.querySelectorAll<HTMLElement>('[data-token]').forEach((b) =>
+    box.querySelectorAll<HTMLElement>('[data-key]').forEach((b) =>
       b.addEventListener('click', () => {
         this.closeSheets();
-        this.game.claims.open(b.dataset.token);
+        this.game.claims.open(b.dataset.key);
       }),
     );
   }
